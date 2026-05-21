@@ -1,0 +1,54 @@
+# ==========================================
+# 1. PlatformIO & Embedded Firmware
+# ==========================================
+# Local build environments, compiled binaries, and internal package caches
+**/Arduino Files/.pio/
+**/Arduino Files/.pioenvs/
+**/Arduino Files/.piolibdeps/
+
+# PlatformIO native test artifacts
+**/.test/
+
+# ==========================================
+# 2. Python
+# ==========================================
+# Byte-compiled / optimized / dll files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Distribution / packaging profiles
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ==========================================
+# 3. VS Code Workspaces & OS Files
+# ==========================================
+# Ignore local workspace states, but DO NOT ignore your 'project.code-workspace' file
+.vscode/.projects
+.vscode/launch.json
+.vscode/tasks.json
+.vscode/settings.json
+
+# System specific files
+.DS_Store
+Thumbs.db
