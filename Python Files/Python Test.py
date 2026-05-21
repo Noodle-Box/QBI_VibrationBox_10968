@@ -1,8 +1,9 @@
 import time
 import serial
+from serial.tools import list_ports
 
 
-SERIAL_PORT = "COM3"  # Change this to the Arduino port shown by PlatformIO/Device Manager.
+SERIAL_PORT = "COM6"  # Change this to the Arduino port shown by PlatformIO/Device Manager.
 BAUD_RATE = 9600
 
 strength = 50  # Percent, 0-100. Arduino maps this to PWM 0-255.
@@ -95,19 +96,31 @@ def handle_user_command(arduino, user_input):
 
 
 def main():
-    with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1) as arduino:
-        time.sleep(2)  # Give the Arduino time to reset after opening serial.
-        send_all_settings(arduino)
+    try:
+        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1) as arduino:
+            time.sleep(2)  # Give the Arduino time to reset after opening serial.
+            send_all_settings(arduino)
 
-        while True:
-            print_menu()
-            user_input = input("> ").strip()
+            while True:
+                print_menu()
+                user_input = input("> ").strip()
 
-            if user_input.lower() == "q":
-                set_strength(arduino, 0)
-                break
+                if user_input.lower() == "q":
+                    set_strength(arduino, 0)
+                    break
 
-            handle_user_command(arduino, user_input)
+                handle_user_command(arduino, user_input)
+    except serial.SerialException as exc:
+        print(f"Could not open {SERIAL_PORT}: {exc}")
+        print()
+        print("Available serial ports:")
+
+        ports = list(list_ports.comports())
+        if not ports:
+            print("  No serial ports detected.")
+        else:
+            for port in ports:
+                print(f"  {port.device}: {port.description}")
 
 
 if __name__ == "__main__":
