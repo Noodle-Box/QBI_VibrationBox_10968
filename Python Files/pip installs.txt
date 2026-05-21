@@ -1,0 +1,5 @@
+# Pip Installs
+
+1. pyserial
+2. sounddevice
+3. numpy
