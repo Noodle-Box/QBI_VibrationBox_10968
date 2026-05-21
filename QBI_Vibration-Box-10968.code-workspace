@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "Motor Driver - Vibration Box",
+			"path": "Arduino Files/Motor Driver - Vibration Box"
+		}
+	],
+	"settings": {}
+}
