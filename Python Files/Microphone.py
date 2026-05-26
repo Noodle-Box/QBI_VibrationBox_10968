@@ -34,6 +34,7 @@ How to use this file:
 
 5. Save default microphone device:
    python .\\Microphone.py --set-device 18
+   python .\\Microphone.py --set-time 100
 
 6. Show current recording settings:
    python .\\Microphone.py --info
@@ -67,6 +68,7 @@ DEFAULT_AUTO_SELECT_KEYWORD = "Pettersson"
 def default_settings():
     return {
         "device_index": None,
+        "duration_seconds": None,
     }
 
 
@@ -166,8 +168,20 @@ def set_recording_device(settings, device_index):
     return True
 
 
+def set_recording_duration(settings, duration_seconds):
+    if duration_seconds <= 0:
+        print("Recording duration must be greater than 0 seconds.")
+        return False
+
+    settings["duration_seconds"] = duration_seconds
+    save_settings(settings)
+    print(f"Recording duration set to {duration_seconds} seconds.")
+    return True
+
+
 def print_recording_info(settings, sample_rate, channels, file_format, default_duration):
     device_index = settings["device_index"]
+    duration_seconds = settings["duration_seconds"] or default_duration
     device_label = "Auto-select"
 
     if device_index is not None:
@@ -179,7 +193,7 @@ def print_recording_info(settings, sample_rate, channels, file_format, default_d
 
     print(
         f"Device Index: {device_label} \n"
-        f"Duration: {default_duration} s \n"
+        f"Duration: {duration_seconds} s \n"
         f"Sampling Freq: {sample_rate} Hz \n"
         f"Channels: {channels} \n"
         f"Format: {file_format} \n"
@@ -262,7 +276,7 @@ def record_from_settings(
         list_input_mics(keyword)
         return None
 
-    duration_seconds = duration_override if duration_override is not None else duration_seconds
+    duration_seconds = duration_override if duration_override is not None else settings["duration_seconds"] or duration_seconds
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     wav_path = RECORDINGS_DIR / f"m500_{timestamp}_{sample_rate}hz.wav"
     mp3_path = RECORDINGS_DIR / f"m500_{timestamp}_preview.mp3"
@@ -272,7 +286,7 @@ def record_from_settings(
     except sd.PortAudioError as exc:
         print(f"Could not record at {sample_rate} Hz: {exc}")
         print()
-        print("Change the microphone sample rate macro in Main_Motor_Driver.py to a rate supported by the selected microphone.")
+        print("Change the microphone sample rate macro in Main.py to a rate supported by the selected microphone.")
         return None
 
     write_wav(wav_path, audio, sample_rate, channels)
@@ -290,6 +304,7 @@ def add_microphone_arguments(parser):
     parser.add_argument("--list-devices", action="store_true", help="Show input microphone devices and exit.")
     parser.add_argument("--filter", help="Only list microphones whose names contain this keyword.")
     parser.add_argument("--set-device", type=int, help="Save the system input device index used for recording.")
+    parser.add_argument("--set-time", type=float, help="Save the recording duration in seconds.")
     parser.add_argument("--info", action="store_true", help="Show the current recording settings and exit.")
     parser.add_argument("--record-mic", action="store_true", help="Record microphone audio using saved settings.")
     parser.add_argument("--device", type=int, help="System input device index. Overrides keyword search.")
@@ -315,6 +330,9 @@ def handle_microphone_args(
     settings_changed = False
     if args.set_device is not None:
         settings_changed = set_recording_device(settings, args.set_device) or settings_changed
+
+    if args.set_time is not None:
+        settings_changed = set_recording_duration(settings, args.set_time) or settings_changed
 
     if args.info:
         print_recording_info(settings, sample_rate, channels, file_format, duration_seconds)
