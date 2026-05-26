@@ -1,14 +1,7 @@
 import time
+
 import serial
 from serial.tools import list_ports
-
-
-SERIAL_PORT = "COM6"  # Change this to the Arduino port shown by PlatformIO/Device Manager.
-BAUD_RATE = 9600
-
-strength = 50  # Percent, 0-100. Arduino maps this to PWM 0-255.
-on_time = 200  # Milliseconds.
-off_time = 500  # Milliseconds.
 
 
 def clamp(value, minimum, maximum):
@@ -23,33 +16,31 @@ def send_command(arduino, command_type, value):
 
 
 def set_strength(arduino, value):
-    global strength
-
     strength = clamp(value, 0, 100)
     send_command(arduino, "s", strength)
+    return strength
 
 
 def set_on_time(arduino, value):
-    global on_time
-
     on_time = max(0, int(value))
     send_command(arduino, "n", on_time)
+    return on_time
 
 
 def set_off_time(arduino, value):
-    global off_time
-
     off_time = max(0, int(value))
     send_command(arduino, "f", off_time)
+    return off_time
 
 
-def send_all_settings(arduino):
-    set_strength(arduino, strength)
-    set_on_time(arduino, on_time)
-    set_off_time(arduino, off_time)
+def send_all_settings(arduino, strength, on_time, off_time):
+    strength = set_strength(arduino, strength)
+    on_time = set_on_time(arduino, on_time)
+    off_time = set_off_time(arduino, off_time)
+    return strength, on_time, off_time
 
 
-def print_menu():
+def print_menu(strength, on_time, off_time):
     print()
     print("Current Python settings:")
     print(f"  strength = {strength}%")
@@ -64,64 +55,76 @@ def print_menu():
     print("  q           stop motor and quit")
 
 
-def handle_user_command(arduino, user_input):
+def handle_user_command(arduino, user_input, strength, on_time, off_time):
     parts = user_input.strip().split()
     if not parts:
-        return
+        return strength, on_time, off_time
 
     command = parts[0].lower()
 
     if command == "all":
-        send_all_settings(arduino)
-        return
+        return send_all_settings(arduino, strength, on_time, off_time)
 
     if len(parts) != 2:
         print("Use commands like: s 50, n 200, or f 500")
-        return
+        return strength, on_time, off_time
 
     try:
         value = int(parts[1])
     except ValueError:
         print("Value must be a whole number.")
-        return
+        return strength, on_time, off_time
 
     if command == "s":
-        set_strength(arduino, value)
+        strength = set_strength(arduino, value)
     elif command == "n":
-        set_on_time(arduino, value)
+        on_time = set_on_time(arduino, value)
     elif command == "f":
-        set_off_time(arduino, value)
+        off_time = set_off_time(arduino, value)
     else:
         print("Unknown command. Use s, n, f, all, or q.")
 
+    return strength, on_time, off_time
 
-def main():
+
+def print_available_serial_ports():
+    print("Available serial ports:")
+
+    ports = list(list_ports.comports())
+    if not ports:
+        print("  No serial ports detected.")
+    else:
+        for port in ports:
+            print(f"  {port.device}: {port.description}")
+
+
+def run_motor_driver(serial_port, baud_rate, strength, on_time, off_time):
     try:
-        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1) as arduino:
+        with serial.Serial(serial_port, baud_rate, timeout=1) as arduino:
             time.sleep(2)  # Give the Arduino time to reset after opening serial.
-            send_all_settings(arduino)
+            strength, on_time, off_time = send_all_settings(
+                arduino,
+                strength,
+                on_time,
+                off_time,
+            )
 
             while True:
-                print_menu()
+                print_menu(strength, on_time, off_time)
                 user_input = input("> ").strip()
 
                 if user_input.lower() == "q":
                     set_strength(arduino, 0)
                     break
 
-                handle_user_command(arduino, user_input)
+                strength, on_time, off_time = handle_user_command(
+                    arduino,
+                    user_input,
+                    strength,
+                    on_time,
+                    off_time,
+                )
     except serial.SerialException as exc:
-        print(f"Could not open {SERIAL_PORT}: {exc}")
+        print(f"Could not open {serial_port}: {exc}")
         print()
-        print("Available serial ports:")
-
-        ports = list(list_ports.comports())
-        if not ports:
-            print("  No serial ports detected.")
-        else:
-            for port in ports:
-                print(f"  {port.device}: {port.description}")
-
-
-if __name__ == "__main__":
-    main()
+        print_available_serial_ports()

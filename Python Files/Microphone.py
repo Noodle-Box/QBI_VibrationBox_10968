@@ -32,15 +32,14 @@ How to use this file:
 4. Record a WAV file:
    python .\\Microphone.py --device 18 --duration 5
 
-5. Save default recording settings:
+5. Save default microphone device:
    python .\\Microphone.py --set-device 18
-   python .\\Microphone.py --set-time 100
 
 6. Show current recording settings:
    python .\\Microphone.py --info
 
-7. To change the recording sample rate, edit the SAMPLE_RATE value near the
-   top of this file, then run the recording command again.
+7. When Microphone.py is used by Main_Motor_Driver.py, change the microphone
+   macros in Main_Motor_Driver.py, then run the command again.
 
 Recordings are saved into:
    Python Files\\recordings
@@ -59,20 +58,15 @@ The input microphone for this project is the Pettersson M500 however if you choo
 """
 
 
-DEVICE_KEYWORD = "Pettersson"
-SAMPLE_RATE = 384000
-CHANNELS = 1
 RESOLUTION = 16
 RECORDINGS_DIR = Path(__file__).resolve().parent / "recordings"
 SETTINGS_PATH = Path(__file__).resolve().parent / "microphone_settings.json"
-DEFAULT_RECORDING_DURATION = 5.0
-FILE_FORMAT = "WAV"
+DEFAULT_AUTO_SELECT_KEYWORD = "Pettersson"
 
 
 def default_settings():
     return {
         "device_index": None,
-        "duration_seconds": DEFAULT_RECORDING_DURATION,
     }
 
 
@@ -172,20 +166,8 @@ def set_recording_device(settings, device_index):
     return True
 
 
-def set_recording_duration(settings, duration_seconds):
-    if duration_seconds <= 0:
-        print("Recording duration must be greater than 0 seconds.")
-        return False
-
-    settings["duration_seconds"] = duration_seconds
-    save_settings(settings)
-    print(f"Recording duration set to {duration_seconds} seconds.")
-    return True
-
-
-def print_recording_info(settings):
+def print_recording_info(settings, sample_rate, channels, file_format, default_duration):
     device_index = settings["device_index"]
-    duration_seconds = settings["duration_seconds"]
     device_label = "Auto-select"
 
     if device_index is not None:
@@ -197,19 +179,20 @@ def print_recording_info(settings):
 
     print(
         f"Device Index: {device_label} \n"
-        f"Duration: {duration_seconds} s \n"
-        f"Sampling Freq: {SAMPLE_RATE} Hz \n"
-        f"Format: {FILE_FORMAT} \n"
+        f"Duration: {default_duration} s \n"
+        f"Sampling Freq: {sample_rate} Hz \n"
+        f"Channels: {channels} \n"
+        f"Format: {file_format} \n"
         f"Location: {RECORDINGS_DIR}"
     )
 
 
-def write_wav(path, audio, sample_rate):
+def write_wav(path, audio, sample_rate, channels):
     path.parent.mkdir(parents=True, exist_ok=True)
     audio = np.asarray(audio, dtype=np.int16)
 
     with wave.open(str(path), "wb") as wav_file:
-        wav_file.setnchannels(CHANNELS)
+        wav_file.setnchannels(channels)
         wav_file.setsampwidth(RESOLUTION // 8)
         wav_file.setframerate(sample_rate)
         wav_file.writeframes(audio.tobytes())
@@ -240,82 +223,144 @@ def convert_wav_to_mp3(wav_path, mp3_path):
     subprocess.run(command, check=True)
     return True
 
-def record_audio(device_index, duration_seconds, sample_rate):
+def record_audio(device_index, duration_seconds, sample_rate, channels):
     print(f"Recording {duration_seconds} seconds from device index {device_index}...")
     audio = sd.rec(
         int(duration_seconds * sample_rate),
         samplerate=sample_rate,
-        channels=CHANNELS,
+        channels=channels,
         dtype="int16",
         device=device_index,
     )
     sd.wait()
     return audio
 
-def main():
-    parser = argparse.ArgumentParser(description="Record audio from the Pettersson M500.")
+
+def resolve_recording_device(settings, keyword, device_override=None):
+    device_index = device_override if device_override is not None else settings["device_index"]
+    if device_index is None:
+        device_index = find_input_mic(keyword)
+
+    return device_index
+
+
+def record_from_settings(
+    settings,
+    sample_rate,
+    channels,
+    duration_seconds,
+    file_format,
+    keyword=DEFAULT_AUTO_SELECT_KEYWORD,
+    device_override=None,
+    duration_override=None,
+    mp3=False,
+):
+    device_index = resolve_recording_device(settings, keyword, device_override)
+    if device_index is None:
+        print(f"No input microphone found containing '{keyword}'.")
+        print()
+        list_input_mics(keyword)
+        return None
+
+    duration_seconds = duration_override if duration_override is not None else duration_seconds
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    wav_path = RECORDINGS_DIR / f"m500_{timestamp}_{sample_rate}hz.wav"
+    mp3_path = RECORDINGS_DIR / f"m500_{timestamp}_preview.mp3"
+
+    try:
+        audio = record_audio(device_index, duration_seconds, sample_rate, channels)
+    except sd.PortAudioError as exc:
+        print(f"Could not record at {sample_rate} Hz: {exc}")
+        print()
+        print("Change the microphone sample rate macro in Main_Motor_Driver.py to a rate supported by the selected microphone.")
+        return None
+
+    write_wav(wav_path, audio, sample_rate, channels)
+    print(f"Saved {file_format}: {wav_path}")
+
+    if mp3:
+        if convert_wav_to_mp3(wav_path, mp3_path):
+            print(f"Saved MP3 preview: {mp3_path}")
+            print("Note: MP3 is downsampled to 48 kHz and will not preserve ultrasonic content.")
+
+    return wav_path
+
+
+def add_microphone_arguments(parser):
     parser.add_argument("--list-devices", action="store_true", help="Show input microphone devices and exit.")
     parser.add_argument("--filter", help="Only list microphones whose names contain this keyword.")
     parser.add_argument("--set-device", type=int, help="Save the system input device index used for recording.")
-    parser.add_argument("--set-time", type=float, help="Save the recording duration in seconds.")
     parser.add_argument("--info", action="store_true", help="Show the current recording settings and exit.")
+    parser.add_argument("--record-mic", action="store_true", help="Record microphone audio using saved settings.")
     parser.add_argument("--device", type=int, help="System input device index. Overrides keyword search.")
-    parser.add_argument("--keyword", default=DEVICE_KEYWORD, help="Device name keyword to auto-select for recording.")
+    parser.add_argument("--keyword", default=DEFAULT_AUTO_SELECT_KEYWORD, help="Device name keyword to auto-select for recording.")
     parser.add_argument("--duration", type=float, help="One-time recording length in seconds.")
     parser.add_argument("--mp3", action="store_true", help="Also export an MP3 preview using ffmpeg.")
-    args = parser.parse_args()
+
+
+def handle_microphone_args(
+    args,
+    sample_rate,
+    channels,
+    file_format,
+    duration_seconds,
+    record_when_no_command=False,
+):
     settings = load_settings()
 
     if args.list_devices:
         list_input_mics(args.filter)
-        return
+        return True
 
     settings_changed = False
     if args.set_device is not None:
         settings_changed = set_recording_device(settings, args.set_device) or settings_changed
 
-    if args.set_time is not None:
-        settings_changed = set_recording_duration(settings, args.set_time) or settings_changed
-
     if args.info:
-        print_recording_info(settings)
-        return
+        print_recording_info(settings, sample_rate, channels, file_format, duration_seconds)
+        return True
 
     if settings_changed:
-        print_recording_info(settings)
-        return
+        print_recording_info(settings, sample_rate, channels, file_format, duration_seconds)
+        return True
 
-    device_index = args.device if args.device is not None else settings["device_index"]
-    if device_index is None:
-        device_index = find_input_mic(args.keyword)
+    should_record = (
+        args.record_mic
+        or record_when_no_command
+        or args.device is not None
+        or args.duration is not None
+        or args.mp3
+    )
 
-    if device_index is None:
-        print(f"No input microphone found containing '{args.keyword}'.")
-        print()
-        list_input_mics(args.keyword)
-        return
+    if should_record:
+        record_from_settings(
+            settings,
+            sample_rate=sample_rate,
+            channels=channels,
+            duration_seconds=duration_seconds,
+            file_format=file_format,
+            keyword=args.keyword,
+            device_override=args.device,
+            duration_override=args.duration,
+            mp3=args.mp3,
+        )
+        return True
 
-    duration_seconds = args.duration if args.duration is not None else settings["duration_seconds"]
+    return False
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    wav_path = RECORDINGS_DIR / f"m500_{timestamp}_{SAMPLE_RATE}hz.wav"
-    mp3_path = RECORDINGS_DIR / f"m500_{timestamp}_preview.mp3"
 
-    try:
-        audio = record_audio(device_index, duration_seconds, SAMPLE_RATE)
-    except sd.PortAudioError as exc:
-        print(f"Could not record at {SAMPLE_RATE} Hz: {exc}")
-        print()
-        print("Change SAMPLE_RATE near the top of this file to a rate supported by the selected microphone.")
-        return
-
-    write_wav(wav_path, audio, SAMPLE_RATE)
-    print(f"Saved WAV: {wav_path}")
-
-    if args.mp3:
-        if convert_wav_to_mp3(wav_path, mp3_path):
-            print(f"Saved MP3 preview: {mp3_path}")
-            print("Note: MP3 is downsampled to 48 kHz and will not preserve ultrasonic content.")
+def main():
+    parser = argparse.ArgumentParser(description="Record audio from the Pettersson M500.")
+    add_microphone_arguments(parser)
+    args = parser.parse_args()
+    handle_microphone_args(
+        args,
+        sample_rate=384000,
+        channels=1,
+        file_format="WAV",
+        duration_seconds=5.0,
+        record_when_no_command=True,
+    )
 
 
 if __name__ == "__main__":
