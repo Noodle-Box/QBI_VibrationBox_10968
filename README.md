@@ -5,6 +5,7 @@ Python-controlled vibration box project with:
 - Arduino motor-driver firmware built with PlatformIO
 - Python motor control over serial
 - Python ultrasonic microphone recording
+- Python OAK-D PoE camera preview and video recording
 
 ## Setup
 
@@ -15,7 +16,7 @@ Python-controlled vibration box project with:
 
 ```powershell
 cd "Python Files"
-python -m pip install pyserial sounddevice numpy
+python -m pip install pyserial sounddevice numpy depthai opencv-python
 ```
 
 Optional: install `ffmpeg` separately if MP3 preview export is needed.
@@ -47,9 +48,22 @@ python .\Main.py --list-devices --filter "Pettersson"
 Configure peripherals:
 
 ```powershell
-python .\Main.py --set-motor on --set-mic on
+python .\Main.py --set-motor on --set-mic on --set-camera on
 python .\Main.py --motor --set-port COM6 --set-strength 50 --set-on 200 --set-off 500
 python .\Main.py --mic --set-device 15 --set-duration 10
+python .\Main.py --camera --set-camera-record on --set-camera-duration 10
+```
+
+List OAK cameras:
+
+```powershell
+python .\Main.py --list-cameras
+```
+
+If the OAK-D PoE camera appears in OAK Viewer but not in Python discovery, copy its IP address from OAK Viewer and save it manually:
+
+```powershell
+python .\Main.py --camera --set-camera-ip 169.254.x.x
 ```
 
 Check current configuration:

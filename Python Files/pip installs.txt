@@ -3,10 +3,12 @@
 1. pyserial
 2. sounddevice
 3. numpy
+4. depthai
+5. opencv-python
 
 Install all required Python packages with:
 
-python -m pip install pyserial sounddevice numpy
+python -m pip install pyserial sounddevice numpy depthai opencv-python
 
 Optional non-pip dependency:
 

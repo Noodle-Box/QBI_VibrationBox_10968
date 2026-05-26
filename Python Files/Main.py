@@ -4,6 +4,7 @@ import threading
 from pathlib import Path
 
 # Local functionality drivers (You shouldn't have to change these)
+import Camera
 import Microphone
 import Motor
 
@@ -21,6 +22,13 @@ MICROPHONE_CHANNELS = 1  # Mono recording. Set to 2 for stereo if microphone sup
 MICROPHONE_FILE_FORMAT = "WAV"
 MIC_DEFAULT_TIME = 10.0  # Duration of recording in seconds.
 
+# Camera Macros (Change if needed)
+CAMERA_WIDTH = 1280
+CAMERA_HEIGHT = 720
+CAMERA_FPS = 30
+CAMERA_DEFAULT_TIME = 10.0
+CAMERA_FILE_FORMAT = "AVI"
+
 PERIPHERAL_SETTINGS_PATH = Path(__file__).resolve().parent / "peripheral_settings.json"
 MOTOR_SETTINGS_PATH = Path(__file__).resolve().parent / "motor_settings.json"
 
@@ -29,6 +37,7 @@ def default_peripheral_settings():
     return {
         "motor_enabled": True,
         "mic_enabled": True,
+        "camera_enabled": False,
     }
 
 
@@ -112,6 +121,17 @@ def print_motor_settings():
     )
 
 
+def print_camera_settings():
+    Camera.print_camera_info(
+        Camera.load_settings(),
+        width=CAMERA_WIDTH,
+        height=CAMERA_HEIGHT,
+        fps=CAMERA_FPS,
+        default_duration=CAMERA_DEFAULT_TIME,
+        file_format=CAMERA_FILE_FORMAT,
+    )
+
+
 def print_enabled_peripheral_settings(settings):
     if settings["motor_enabled"]:
         print("Motor Settings")
@@ -124,27 +144,42 @@ def print_enabled_peripheral_settings(settings):
         print("Microphone Settings")
         print_microphone_settings()
 
-    if not settings["motor_enabled"] and not settings["mic_enabled"]:
+    if (settings["motor_enabled"] or settings["mic_enabled"]) and settings["camera_enabled"]:
+        print()
+
+    if settings["camera_enabled"]:
+        print("Camera Settings")
+        print_camera_settings()
+
+    if not settings["motor_enabled"] and not settings["mic_enabled"] and not settings["camera_enabled"]:
         print("No peripherals are enabled.")
 
 
-def print_selected_peripheral_settings(show_motor, show_mic):
+def print_selected_peripheral_settings(show_motor, show_mic, show_camera):
     if show_motor:
         print("Motor Settings")
         print_motor_settings()
 
-    if show_motor and show_mic:
+    if show_motor and (show_mic or show_camera):
         print()
 
     if show_mic:
         print("Microphone Settings")
         print_microphone_settings()
 
+    if show_mic and show_camera:
+        print()
+
+    if show_camera:
+        print("Camera Settings")
+        print_camera_settings()
+
 
 def print_system_info(settings):
     print("Peripheral State")
     print(f"Motor: {on_off_label(settings['motor_enabled'])}")
     print(f"Mic: {on_off_label(settings['mic_enabled'])}")
+    print(f"Camera: {on_off_label(settings['camera_enabled'])}")
     print()
     print_enabled_peripheral_settings(settings)
 
@@ -159,12 +194,29 @@ def record_microphone():
     )
 
 
+def run_camera():
+    camera_settings = Camera.load_settings()
+    try:
+        Camera.run_camera(
+            width=CAMERA_WIDTH,
+            height=CAMERA_HEIGHT,
+            fps=CAMERA_FPS,
+            duration_seconds=camera_settings["duration_seconds"] or CAMERA_DEFAULT_TIME,
+            file_format=CAMERA_FILE_FORMAT,
+            device_ip=camera_settings["device_ip"],
+            record_video=camera_settings["record_video"],
+        )
+    except Exception as exc:
+        print(f"Camera stopped with an error: {exc}")
+
+
 def run_enabled_peripherals(peripheral_settings):
     motor_enabled = peripheral_settings["motor_enabled"]
     mic_enabled = peripheral_settings["mic_enabled"]
+    camera_enabled = peripheral_settings["camera_enabled"]
 
-    if not motor_enabled and not mic_enabled:
-        print("No peripherals are enabled. Use --set-motor on or --set-mic on.")
+    if not motor_enabled and not mic_enabled and not camera_enabled:
+        print("No peripherals are enabled. Use --set-motor on, --set-mic on, or --set-camera on.")
         return
 
     if mic_enabled:
@@ -176,7 +228,9 @@ def run_enabled_peripherals(peripheral_settings):
         if not mic_ready:
             return
 
-    if mic_enabled and motor_enabled:
+    worker_threads = []
+
+    if motor_enabled:
         motor_settings = load_motor_settings()
         motor_thread = threading.Thread(
             target=Motor.run_motor_driver,
@@ -189,32 +243,32 @@ def run_enabled_peripherals(peripheral_settings):
             },
         )
         motor_thread.start()
+        worker_threads.append(motor_thread)
 
-        record_microphone()
-        motor_thread.join()
-        return
+    if camera_enabled:
+        camera_thread = threading.Thread(target=run_camera)
+        camera_thread.start()
+        worker_threads.append(camera_thread)
 
     if mic_enabled:
         record_microphone()
+        for worker_thread in worker_threads:
+            worker_thread.join()
         return
 
-    motor_settings = load_motor_settings()
-    Motor.run_motor_driver(
-        serial_port = motor_settings["serial_port"],
-        baud_rate = motor_settings["baud_rate"],
-        strength = motor_settings["strength"],
-        on_time = motor_settings["on_time"],
-        off_time = motor_settings["off_time"],
-    )
+    for worker_thread in worker_threads:
+        worker_thread.join()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Control the motor driver and microphone.")
+    parser = argparse.ArgumentParser(description="Control motor, microphone, and camera peripherals.")
     Microphone.add_microphone_arguments(parser)
+    Camera.add_camera_arguments(parser)
     parser.add_argument("--motor", action="store_true", help="Configure or target motor settings.")
     parser.add_argument("--mic", action="store_true", help="Configure or target microphone settings.")
     parser.add_argument("--set-motor", choices=["on", "off"], help="Enable or disable the motor driver.")
     parser.add_argument("--set-mic", choices=["on", "off"], help="Enable or disable the microphone.")
+    parser.add_argument("--set-camera", choices=["on", "off"], help="Enable or disable the camera.")
     parser.add_argument("--set-strength", type=int, help="With --motor, save motor strength percent, 0-100.")
     parser.add_argument("--set-on", type=int, help="With --motor, save motor on-time in milliseconds.")
     parser.add_argument("--set-off", type=int, help="With --motor, save motor off-time in milliseconds.")
@@ -240,6 +294,17 @@ def main():
         )
         return
 
+    if args.list_cameras:
+        Camera.handle_camera_args(
+            args,
+            width=CAMERA_WIDTH,
+            height=CAMERA_HEIGHT,
+            fps=CAMERA_FPS,
+            default_duration=CAMERA_DEFAULT_TIME,
+            file_format=CAMERA_FILE_FORMAT,
+        )
+        return
+
     peripheral_settings_changed = False
     if args.set_motor is not None:
         peripheral_settings["motor_enabled"] = args.set_motor == "on"
@@ -249,8 +314,13 @@ def main():
         peripheral_settings["mic_enabled"] = args.set_mic == "on"
         peripheral_settings_changed = True
 
+    if args.set_camera is not None:
+        peripheral_settings["camera_enabled"] = args.set_camera == "on"
+        peripheral_settings_changed = True
+
     motor_selected = args.motor
     mic_selected = args.mic
+    camera_selected = args.camera
 
     motor_settings_changed = False
     motor_port = args.set_port if args.set_port is not None else args.motor_port
@@ -295,6 +365,26 @@ def main():
     if mic_duration is not None:
         microphone_settings_changed = Microphone.set_recording_duration(mic_settings, mic_duration) or microphone_settings_changed
 
+    camera_settings_changed = False
+    camera_settings = Camera.load_settings()
+    if args.set_camera_ip is not None:
+        camera_settings_changed = Camera.set_device_ip(
+            camera_settings,
+            args.set_camera_ip,
+        ) or camera_settings_changed
+
+    if args.set_camera_record is not None:
+        camera_settings_changed = Camera.set_record_video(
+            camera_settings,
+            args.set_camera_record == "on",
+        ) or camera_settings_changed
+
+    if args.set_camera_duration is not None:
+        camera_settings_changed = Camera.set_duration(
+            camera_settings,
+            args.set_camera_duration,
+        ) or camera_settings_changed
+
     if peripheral_settings_changed:
         save_peripheral_settings(peripheral_settings)
 
@@ -306,10 +396,11 @@ def main():
         print_enabled_peripheral_settings(peripheral_settings)
         return
 
-    if motor_settings_changed or microphone_settings_changed:
+    if motor_settings_changed or microphone_settings_changed or camera_settings_changed:
         print_selected_peripheral_settings(
             show_motor=motor_selected or (motor_settings_changed and not mic_selected),
             show_mic=mic_selected or (microphone_settings_changed and not motor_selected),
+            show_camera=camera_selected or (camera_settings_changed and not motor_selected and not mic_selected),
         )
         return
 
