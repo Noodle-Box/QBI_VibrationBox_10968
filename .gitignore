@@ -23,6 +23,11 @@ venv/
 ENV/
 env/
 
+# Generated microphone recordings
+Python Files/recordings/
+Python Files/recordings/**/*.wav
+*.wav
+
 # Distribution / packaging profiles
 develop-eggs/
 dist/
