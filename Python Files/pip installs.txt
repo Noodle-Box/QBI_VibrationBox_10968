@@ -3,3 +3,11 @@
 1. pyserial
 2. sounddevice
 3. numpy
+
+Install all required Python packages with:
+
+python -m pip install pyserial sounddevice numpy
+
+Optional non-pip dependency:
+
+- ffmpeg, only needed for MP3 preview export

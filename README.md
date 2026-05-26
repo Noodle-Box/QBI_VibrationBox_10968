@@ -1,19 +1,67 @@
-If you wanna clone this, 
+# QBI Vibration Box 10968
 
-1. Use VSCode
-2. Install Python (latest)
-3. Install PlatformIO for Arduino/Firmware
+Python-controlled vibration box project with:
 
+- Arduino motor-driver firmware built with PlatformIO
+- Python motor control over serial
+- Python ultrasonic microphone recording
 
+## Setup
 
-How to use:
-1. Ensure git pull/clone worked
-2. Go to Main.py
-3. Enable the drivers with: 
+1. Clone or copy this repository.
+2. Install Python.
+3. Install VSCode and the PlatformIO extension.
+4. Install required Python packages:
 
-python .\Main.py --set-motor (on/off) --set-mic (on/off)
+```powershell
+cd "Python Files"
+python -m pip install pyserial sounddevice numpy
+```
 
-4. Configure desired settings with the correct --set
-5. Once peripheral settings configured, run main with:
+Optional: install `ffmpeg` separately if MP3 preview export is needed.
 
+## Arduino Firmware
+
+Open the PlatformIO project:
+
+```text
+Arduino Files\Motor Driver - Vibration Box
+```
+
+Build and upload the firmware to the Arduino board.
+
+## Python Use
+
+From the Python folder:
+
+```powershell
+cd "Python Files"
+```
+
+List Pettersson microphone devices:
+
+```powershell
+python .\Main.py --list-devices --filter "Pettersson"
+```
+
+Configure peripherals:
+
+```powershell
+python .\Main.py --set-motor on --set-mic on
+python .\Main.py --motor --set-port COM6 --set-strength 50 --set-on 200 --set-off 500
+python .\Main.py --mic --set-device 15 --set-duration 10
+```
+
+Check current configuration:
+
+```powershell
+python .\Main.py --info
+```
+
+Run enabled peripherals:
+
+```powershell
 python .\Main.py
+```
+
+Local hardware settings are saved into JSON files inside `Python Files`. These are ignored by git because COM ports and audio device indices are machine-specific.

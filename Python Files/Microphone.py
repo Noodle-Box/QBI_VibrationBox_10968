@@ -10,55 +10,6 @@ import numpy as np
 import sounddevice as sd
 
 
-"""
-How to use this file:
-
-1. Install the required Python packages:
-   python -m pip install sounddevice numpy
-
-2. From the project root, list available input microphones:
-   python ".\\Python Files\\Microphone.py" --list-devices
-
-   To list only microphones whose names match a keyword:
-   python ".\\Python Files\\Microphone.py" --list-devices --filter "Pettersson"
-
-   Or from inside the Python Files folder:
-   python .\\Microphone.py --list-devices
-
-3. Find the microphone device index in the printed list.
-   Use the printed "system device" number when passing --device.
-   Example: if the Pettersson M500 line says "system device 18", use --device 18.
-
-4. Record a WAV file:
-   python .\\Microphone.py --device 18 --duration 5
-
-5. Save default microphone device:
-   python .\\Microphone.py --set-device 18
-   python .\\Microphone.py --set-time 100
-
-6. Show current recording settings:
-   python .\\Microphone.py --info
-
-7. When Microphone.py is used by Main_Motor_Driver.py, change the microphone
-   macros in Main_Motor_Driver.py, then run the command again.
-
-Recordings are saved into:
-   Python Files\\recordings
-
-Note: WAV is the main research recording format. MP3 export is only a preview
-format and does not preserve ultrasonic content properly.
-
-
-NOTE: in --list-devices, use the input Microphone with the highest sampling frequency. 
-For instance, the Pettersson M500 has two default drivers listed
-1. Sampling Freq: 384000 Hz - for proper ultrasonic recording mode
-2. Sampling Freq: 48000 Hz - basic audio recording
-
-I've listed it such that the devices with the highest sampling freq's are at the top.
-The input microphone for this project is the Pettersson M500 however if you choose to use another microphone, it should still be detected here 
-"""
-
-
 RESOLUTION = 16
 RECORDINGS_DIR = Path(__file__).resolve().parent / "recordings"
 SETTINGS_PATH = Path(__file__).resolve().parent / "microphone_settings.json"
@@ -97,6 +48,21 @@ def mic_matches_keyword(device, keyword):
     return keyword.lower() in device["name"].lower()
 
 
+def get_host_api_name(device):
+    host_api_index = device["hostapi"]
+    return sd.query_hostapis(host_api_index)["name"]
+
+
+def get_input_extra_settings(device_index):
+    device = sd.query_devices(device_index)
+    host_api_name = get_host_api_name(device)
+
+    if "WASAPI" in host_api_name:
+        return sd.WasapiSettings(exclusive=True)
+
+    return None
+
+
 def list_input_mics(keyword=None):
     print("Available input microphone devices:")
     input_mics = []
@@ -119,10 +85,12 @@ def list_input_mics(keyword=None):
 
     for display_index, (system_index, device) in enumerate(input_mics):
         default_rate = int(device["default_samplerate"])
+        host_api_name = get_host_api_name(device)
         print(
             f"  No.: {display_index} | "
             f"System Index: {system_index} | "
             f"Sampling Freq: {default_rate} Hz | "
+            f"Host API: {host_api_name} | "
             f"Name: {device['name']}"
         )
 
@@ -239,15 +207,59 @@ def convert_wav_to_mp3(wav_path, mp3_path):
 
 def record_audio(device_index, duration_seconds, sample_rate, channels):
     print(f"Recording {duration_seconds} seconds from device index {device_index}...")
-    audio = sd.rec(
-        int(duration_seconds * sample_rate),
+    extra_settings = get_input_extra_settings(device_index)
+    total_frames = int(duration_seconds * sample_rate)
+
+    with sd.InputStream(
+        device=device_index,
         samplerate=sample_rate,
         channels=channels,
         dtype="int16",
-        device=device_index,
-    )
-    sd.wait()
+        extra_settings=extra_settings,
+    ) as stream:
+        audio, overflowed = stream.read(total_frames)
+
+    if overflowed:
+        print("Warning: audio input buffer overflowed during recording.")
+
     return audio
+
+
+def can_record_from_settings(
+    settings,
+    sample_rate,
+    channels,
+    keyword=DEFAULT_AUTO_SELECT_KEYWORD,
+    device_override=None,
+):
+    device_index = resolve_recording_device(settings, keyword, device_override)
+    if device_index is None:
+        print(f"No input microphone found containing '{keyword}'.")
+        print()
+        list_input_mics(keyword)
+        return False
+
+    try:
+        extra_settings = get_input_extra_settings(device_index)
+        with sd.InputStream(
+            device=device_index,
+            samplerate=sample_rate,
+            channels=channels,
+            dtype="int16",
+            extra_settings=extra_settings,
+        ):
+            pass
+    except sd.PortAudioError as exc:
+        print(f"Microphone cannot record at {sample_rate} Hz: {exc}")
+        print()
+        print("Run this to find the correct high-frequency microphone endpoint:")
+        print('  python .\\Main.py --list-devices --filter "Pettersson"')
+        print()
+        print("Then set the System Index for the 384000 Hz endpoint:")
+        print("  python .\\Main.py --mic --set-device <system-index>")
+        return False
+
+    return True
 
 
 def resolve_recording_device(settings, keyword, device_override=None):
