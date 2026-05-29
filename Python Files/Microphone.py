@@ -215,6 +215,9 @@ def convert_wav_to_mp3(wav_path, mp3_path):
     command = [
         ffmpeg,
         "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
         "-i",
         str(wav_path),
         "-ar",
@@ -227,7 +230,7 @@ def convert_wav_to_mp3(wav_path, mp3_path):
         "192k",
         str(mp3_path),
     ]
-    subprocess.run(command, check=True)
+    subprocess.run(command, check=True, capture_output=True, text=True)
     return True
 
 def record_audio(device_index, duration_seconds, sample_rate, channels):

@@ -1,6 +1,9 @@
 import argparse
 import json
+import shutil
+import subprocess
 import threading
+from datetime import datetime
 from pathlib import Path
 
 # Local functionality drivers (You shouldn't have to change these)
@@ -40,6 +43,7 @@ def default_peripheral_settings():
         "mic_enabled": True,
         "camera_enabled": False,
         "record_time": None,
+        "merge_av_enabled": False,
     }
 
 
@@ -158,6 +162,11 @@ def print_enabled_peripheral_settings(settings):
         print("Camera Settings")
         print_camera_settings(record_time)
 
+    if settings["mic_enabled"] and settings["camera_enabled"]:
+        print()
+        print("Audio/Video Merge")
+        print(f"Merge MP4: {on_off_label(settings['merge_av_enabled'])}")
+
     if not settings["motor_enabled"] and not settings["mic_enabled"] and not settings["camera_enabled"]:
         print("No peripherals are enabled.")
 
@@ -188,13 +197,14 @@ def print_system_info(settings):
     print(f"Mic: {on_off_label(settings['mic_enabled'])}")
     print(f"Camera: {on_off_label(settings['camera_enabled'])}")
     print(f"Record Time: {get_record_time(settings)} s")
+    print(f"Merge Audio/Video: {on_off_label(settings['merge_av_enabled'])}")
     print()
     print_enabled_peripheral_settings(settings)
 
 
 def record_microphone(record_time):
     mic_settings = Microphone.load_settings()
-    Microphone.record_from_settings(
+    return Microphone.record_from_settings(
         mic_settings,
         sample_rate=MICROPHONE_SAMPLE_RATE,
         channels=MICROPHONE_CHANNELS,
@@ -207,7 +217,7 @@ def record_microphone(record_time):
 def run_camera(record_time):
     camera_settings = Camera.load_settings()
     try:
-        Camera.run_camera(
+        return Camera.run_camera(
             width=CAMERA_WIDTH,
             height=CAMERA_HEIGHT,
             fps=CAMERA_FPS,
@@ -218,12 +228,63 @@ def run_camera(record_time):
         )
     except Exception as exc:
         print(f"Camera stopped with an error: {exc}")
+        return None
+
+
+def merge_audio_video(video_path, audio_path):
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        print("ffmpeg was not found, so audio/video merge was skipped.")
+        return None
+
+    if video_path is None or audio_path is None:
+        print("Audio/video merge skipped because the video or audio file was not created.")
+        return None
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = Camera.RECORDINGS_DIR / f"merged_av_{timestamp}.mp4"
+    command = [
+        ffmpeg,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(video_path),
+        "-i",
+        str(audio_path),
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-ar",
+        "48000",
+        "-ac",
+        "1",
+        "-shortest",
+        str(output_path),
+    ]
+
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        print(f"Audio/video merge failed: {exc}")
+        if exc.stderr:
+            print(exc.stderr)
+        return None
+
+    print(f"Saved merged audio/video MP4: {output_path}")
+    print("Note: merged MP4 audio is downsampled to 48 kHz. Raw WAV keeps the original microphone data.")
+    return output_path
 
 
 def run_enabled_peripherals(peripheral_settings):
     motor_enabled = peripheral_settings["motor_enabled"]
     mic_enabled = peripheral_settings["mic_enabled"]
     camera_enabled = peripheral_settings["camera_enabled"]
+    merge_enabled = peripheral_settings["merge_av_enabled"]
     record_time = get_record_time(peripheral_settings)
 
     if not motor_enabled and not mic_enabled and not camera_enabled:
@@ -240,6 +301,13 @@ def run_enabled_peripherals(peripheral_settings):
             return
 
     worker_threads = []
+    recording_paths = {
+        "audio": None,
+        "video": None,
+    }
+
+    def run_camera_worker():
+        recording_paths["video"] = run_camera(record_time)
 
     if motor_enabled:
         motor_settings = load_motor_settings()
@@ -258,14 +326,18 @@ def run_enabled_peripherals(peripheral_settings):
         worker_threads.append(motor_thread)
 
     if camera_enabled:
-        camera_thread = threading.Thread(target=run_camera, args=(record_time,))
+        camera_thread = threading.Thread(target=run_camera_worker)
         camera_thread.start()
         worker_threads.append(camera_thread)
 
     if mic_enabled:
-        record_microphone(record_time)
+        recording_paths["audio"] = record_microphone(record_time)
         for worker_thread in worker_threads:
             worker_thread.join()
+
+        if merge_enabled and camera_enabled:
+            merge_audio_video(recording_paths["video"], recording_paths["audio"])
+
         return
 
     for worker_thread in worker_threads:
@@ -281,6 +353,7 @@ def main():
     parser.add_argument("--set-mic", choices=["on", "off"], help="Enable or disable the microphone.")
     parser.add_argument("--set-camera", choices=["on", "off"], help="Enable or disable the camera.")
     parser.add_argument("--set-time", type=float, help="Save shared microphone/camera recording time in seconds.")
+    parser.add_argument("--set-merge", choices=["on", "off"], help="Enable or disable merged camera/audio MP4 export.")
     args = parser.parse_args()
     peripheral_settings = load_peripheral_settings()
     motor_settings = load_motor_settings()
@@ -318,6 +391,10 @@ def main():
 
     if args.set_camera is not None:
         peripheral_settings["camera_enabled"] = args.set_camera == "on"
+        peripheral_settings_changed = True
+
+    if args.set_merge is not None:
+        peripheral_settings["merge_av_enabled"] = args.set_merge == "on"
         peripheral_settings_changed = True
 
     requested_record_time = args.set_time
