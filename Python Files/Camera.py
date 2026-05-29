@@ -37,6 +37,10 @@ def save_settings(settings):
         json.dump(settings, settings_file, indent=2)
 
 
+def get_recording_stem():
+    return datetime.now().strftime("Recording_%H%M%S_%d_%m")
+
+
 def set_record_video(settings, enabled):
     settings["record_video"] = enabled
     save_settings(settings)
@@ -162,15 +166,15 @@ def run_camera(
     record_video=True,
     window_name="OAK-D RGB",
 ):
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    recording_stem = get_recording_stem()
     output_format = file_format.lower()
-    video_path = RECORDINGS_DIR / f"oak_rgb_{timestamp}.{output_format}"
+    video_path = RECORDINGS_DIR / f"{recording_stem}.{output_format}"
     writer_path = video_path
     video_writer = None
 
     if record_video:
         if output_format == "h265":
-            writer_path = RECORDINGS_DIR / f"oak_rgb_{timestamp}_capture.avi"
+            writer_path = RECORDINGS_DIR / f"{recording_stem}_capture.avi"
 
         video_writer, writer_path = create_video_writer(writer_path, fps, width, height)
         print(f"Recording camera video to: {video_path}")

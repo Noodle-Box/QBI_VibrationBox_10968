@@ -47,6 +47,10 @@ def save_settings(settings):
         json.dump(settings, settings_file, indent=2)
 
 
+def get_recording_stem():
+    return datetime.now().strftime("Recording_%H%M%S_%d_%m")
+
+
 def is_input_mic(device):
     return device["max_input_channels"] > 0
 
@@ -340,10 +344,10 @@ def record_from_settings(
         return None
 
     duration_seconds = duration_override if duration_override is not None else duration_seconds
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    wav_path = RECORDINGS_DIR / f"m500_{timestamp}_{sample_rate}hz.wav"
-    flac_path = RECORDINGS_DIR / f"m500_{timestamp}_{sample_rate}hz.flac"
-    mp3_path = RECORDINGS_DIR / f"m500_{timestamp}_preview.mp3"
+    recording_stem = get_recording_stem()
+    wav_path = RECORDINGS_DIR / f"{recording_stem}.wav"
+    flac_path = RECORDINGS_DIR / f"{recording_stem}.flac"
+    mp3_path = RECORDINGS_DIR / f"{recording_stem}.mp3"
     recording_format = get_recording_format(settings, file_format)
     export_mp3 = mp3 or recording_format == "mp3"
     export_flac = recording_format == "flac"

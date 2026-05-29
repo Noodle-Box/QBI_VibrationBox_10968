@@ -231,6 +231,10 @@ def run_camera(record_time):
         return None
 
 
+def get_recording_stem():
+    return datetime.now().strftime("Recording_%H%M%S_%d_%m")
+
+
 def merge_audio_video(video_path, audio_path):
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
@@ -241,8 +245,7 @@ def merge_audio_video(video_path, audio_path):
         print("Audio/video merge skipped because the video or audio file was not created.")
         return None
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = Camera.RECORDINGS_DIR / f"merged_av_{timestamp}.mp4"
+    output_path = Camera.RECORDINGS_DIR / f"{get_recording_stem()}.mp4"
     video_input_args = []
     if Path(video_path).suffix.lower() == ".h265":
         video_input_args = ["-framerate", str(CAMERA_FPS)]
