@@ -15,7 +15,6 @@ def default_settings():
     return {
         "device_ip": None,
         "record_video": True,
-        "duration_seconds": None,
     }
 
 
@@ -40,17 +39,6 @@ def set_record_video(settings, enabled):
     settings["record_video"] = enabled
     save_settings(settings)
     print(f"Camera video recording set to {'on' if enabled else 'off'}.")
-    return True
-
-
-def set_duration(settings, duration_seconds):
-    if duration_seconds <= 0:
-        print("Camera duration must be greater than 0 seconds.")
-        return False
-
-    settings["duration_seconds"] = duration_seconds
-    save_settings(settings)
-    print(f"Camera duration set to {duration_seconds} seconds.")
     return True
 
 
@@ -194,7 +182,8 @@ def run_camera(
 
 
 def print_camera_info(settings, width, height, fps, default_duration, file_format):
-    duration_seconds = settings["duration_seconds"] or default_duration
+    duration_seconds = default_duration
+
     print(
         f"Camera IP: {settings['device_ip'] or 'Auto-discover'} \n"
         f"Resolution: {width}x{height} \n"
@@ -211,7 +200,6 @@ def add_camera_arguments(parser):
     parser.add_argument("--list-cameras", action="store_true", help="List available OAK cameras.")
     parser.add_argument("--set-camera-ip", help="Save the OAK-D PoE camera IP address.")
     parser.add_argument("--set-camera-record", choices=["on", "off"], help="Enable or disable camera video recording.")
-    parser.add_argument("--set-camera-duration", type=float, help="Save camera preview/record duration in seconds.")
 
 
 def handle_camera_args(args, width, height, fps, default_duration, file_format):
@@ -227,9 +215,6 @@ def handle_camera_args(args, width, height, fps, default_duration, file_format):
 
     if args.set_camera_record is not None:
         settings_changed = set_record_video(settings, args.set_camera_record == "on") or settings_changed
-
-    if args.set_camera_duration is not None:
-        settings_changed = set_duration(settings, args.set_camera_duration) or settings_changed
 
     if settings_changed:
         print_camera_info(settings, width, height, fps, default_duration, file_format)

@@ -20,14 +20,15 @@ MOTOR_OFF_TIME = 500  # Milliseconds.
 MICROPHONE_SAMPLE_RATE = 384000  # Sample rate in Hz.
 MICROPHONE_CHANNELS = 1  # Mono recording. Set to 2 for stereo if microphone supports it.
 MICROPHONE_FILE_FORMAT = "WAV"
-MIC_DEFAULT_TIME = 10.0  # Duration of recording in seconds.
 
 # Camera Macros (Change if needed)
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720
 CAMERA_FPS = 30
-CAMERA_DEFAULT_TIME = 10.0
 CAMERA_FILE_FORMAT = "AVI"
+
+# Recording Macros (Change if needed)
+DEFAULT_RECORD_TIME = 60.0  # Shared microphone and camera recording duration in seconds.
 
 PERIPHERAL_SETTINGS_PATH = Path(__file__).resolve().parent / "peripheral_settings.json"
 MOTOR_SETTINGS_PATH = Path(__file__).resolve().parent / "motor_settings.json"
@@ -38,6 +39,7 @@ def default_peripheral_settings():
         "motor_enabled": True,
         "mic_enabled": True,
         "camera_enabled": False,
+        "record_time": None,
     }
 
 
@@ -95,18 +97,20 @@ def on_off_label(enabled):
     return "On" if enabled else "Off"
 
 
-def get_microphone_duration():
-    mic_settings = Microphone.load_settings()
-    return mic_settings["duration_seconds"] or MIC_DEFAULT_TIME
+def get_record_time(settings=None):
+    if settings is None:
+        settings = load_peripheral_settings()
+
+    return settings["record_time"] or DEFAULT_RECORD_TIME
 
 
-def print_microphone_settings():
+def print_microphone_settings(record_time):
     Microphone.print_recording_info(
         Microphone.load_settings(),
         sample_rate=MICROPHONE_SAMPLE_RATE,
         channels=MICROPHONE_CHANNELS,
         file_format=MICROPHONE_FILE_FORMAT,
-        default_duration=MIC_DEFAULT_TIME,
+        default_duration=record_time,
     )
 
 
@@ -121,18 +125,20 @@ def print_motor_settings():
     )
 
 
-def print_camera_settings():
+def print_camera_settings(record_time):
     Camera.print_camera_info(
         Camera.load_settings(),
         width=CAMERA_WIDTH,
         height=CAMERA_HEIGHT,
         fps=CAMERA_FPS,
-        default_duration=CAMERA_DEFAULT_TIME,
+        default_duration=record_time,
         file_format=CAMERA_FILE_FORMAT,
     )
 
 
 def print_enabled_peripheral_settings(settings):
+    record_time = get_record_time(settings)
+
     if settings["motor_enabled"]:
         print("Motor Settings")
         print_motor_settings()
@@ -142,20 +148,20 @@ def print_enabled_peripheral_settings(settings):
 
     if settings["mic_enabled"]:
         print("Microphone Settings")
-        print_microphone_settings()
+        print_microphone_settings(record_time)
 
     if (settings["motor_enabled"] or settings["mic_enabled"]) and settings["camera_enabled"]:
         print()
 
     if settings["camera_enabled"]:
         print("Camera Settings")
-        print_camera_settings()
+        print_camera_settings(record_time)
 
     if not settings["motor_enabled"] and not settings["mic_enabled"] and not settings["camera_enabled"]:
         print("No peripherals are enabled.")
 
 
-def print_selected_peripheral_settings(show_motor, show_mic, show_camera):
+def print_selected_peripheral_settings(show_motor, show_mic, show_camera, record_time):
     if show_motor:
         print("Motor Settings")
         print_motor_settings()
@@ -165,14 +171,14 @@ def print_selected_peripheral_settings(show_motor, show_mic, show_camera):
 
     if show_mic:
         print("Microphone Settings")
-        print_microphone_settings()
+        print_microphone_settings(record_time)
 
     if show_mic and show_camera:
         print()
 
     if show_camera:
         print("Camera Settings")
-        print_camera_settings()
+        print_camera_settings(record_time)
 
 
 def print_system_info(settings):
@@ -180,28 +186,30 @@ def print_system_info(settings):
     print(f"Motor: {on_off_label(settings['motor_enabled'])}")
     print(f"Mic: {on_off_label(settings['mic_enabled'])}")
     print(f"Camera: {on_off_label(settings['camera_enabled'])}")
+    print(f"Record Time: {get_record_time(settings)} s")
     print()
     print_enabled_peripheral_settings(settings)
 
 
-def record_microphone():
+def record_microphone(record_time):
     Microphone.record_from_settings(
         Microphone.load_settings(),
         sample_rate=MICROPHONE_SAMPLE_RATE,
         channels=MICROPHONE_CHANNELS,
-        duration_seconds=get_microphone_duration(),
+        duration_seconds=record_time,
         file_format=MICROPHONE_FILE_FORMAT,
+        duration_override=record_time,
     )
 
 
-def run_camera():
+def run_camera(record_time):
     camera_settings = Camera.load_settings()
     try:
         Camera.run_camera(
             width=CAMERA_WIDTH,
             height=CAMERA_HEIGHT,
             fps=CAMERA_FPS,
-            duration_seconds=camera_settings["duration_seconds"] or CAMERA_DEFAULT_TIME,
+            duration_seconds=record_time,
             file_format=CAMERA_FILE_FORMAT,
             device_ip=camera_settings["device_ip"],
             record_video=camera_settings["record_video"],
@@ -214,6 +222,7 @@ def run_enabled_peripherals(peripheral_settings):
     motor_enabled = peripheral_settings["motor_enabled"]
     mic_enabled = peripheral_settings["mic_enabled"]
     camera_enabled = peripheral_settings["camera_enabled"]
+    record_time = get_record_time(peripheral_settings)
 
     if not motor_enabled and not mic_enabled and not camera_enabled:
         print("No peripherals are enabled. Use --set-motor on, --set-mic on, or --set-camera on.")
@@ -246,12 +255,12 @@ def run_enabled_peripherals(peripheral_settings):
         worker_threads.append(motor_thread)
 
     if camera_enabled:
-        camera_thread = threading.Thread(target=run_camera)
+        camera_thread = threading.Thread(target=run_camera, args=(record_time,))
         camera_thread.start()
         worker_threads.append(camera_thread)
 
     if mic_enabled:
-        record_microphone()
+        record_microphone(record_time)
         for worker_thread in worker_threads:
             worker_thread.join()
         return
@@ -269,6 +278,7 @@ def main():
     parser.add_argument("--set-motor", choices=["on", "off"], help="Enable or disable the motor driver.")
     parser.add_argument("--set-mic", choices=["on", "off"], help="Enable or disable the microphone.")
     parser.add_argument("--set-camera", choices=["on", "off"], help="Enable or disable the camera.")
+    parser.add_argument("--set-record-time", type=float, help="Save shared microphone/camera recording time in seconds.")
     parser.add_argument("--set-strength", type=int, help="With --motor, save motor strength percent, 0-100.")
     parser.add_argument("--set-on", type=int, help="With --motor, save motor on-time in milliseconds.")
     parser.add_argument("--set-off", type=int, help="With --motor, save motor off-time in milliseconds.")
@@ -290,7 +300,7 @@ def main():
             sample_rate = MICROPHONE_SAMPLE_RATE,
             channels = MICROPHONE_CHANNELS,
             file_format = MICROPHONE_FILE_FORMAT,
-            duration_seconds = MIC_DEFAULT_TIME,
+            duration_seconds = get_record_time(peripheral_settings),
         )
         return
 
@@ -300,12 +310,13 @@ def main():
             width=CAMERA_WIDTH,
             height=CAMERA_HEIGHT,
             fps=CAMERA_FPS,
-            default_duration=CAMERA_DEFAULT_TIME,
+            default_duration=get_record_time(peripheral_settings),
             file_format=CAMERA_FILE_FORMAT,
         )
         return
 
     peripheral_settings_changed = False
+    record_time_changed = False
     if args.set_motor is not None:
         peripheral_settings["motor_enabled"] = args.set_motor == "on"
         peripheral_settings_changed = True
@@ -317,6 +328,17 @@ def main():
     if args.set_camera is not None:
         peripheral_settings["camera_enabled"] = args.set_camera == "on"
         peripheral_settings_changed = True
+
+    requested_record_time = args.set_record_time
+
+    if requested_record_time is not None:
+        if requested_record_time <= 0:
+            print("Record time must be greater than 0 seconds.")
+            return
+
+        peripheral_settings["record_time"] = requested_record_time
+        peripheral_settings_changed = True
+        record_time_changed = True
 
     motor_selected = args.motor
     mic_selected = args.mic
@@ -361,10 +383,6 @@ def main():
     if args.set_device is not None:
         microphone_settings_changed = Microphone.set_recording_device(mic_settings, args.set_device) or microphone_settings_changed
 
-    mic_duration = args.set_duration if args.set_duration is not None else args.set_time
-    if mic_duration is not None:
-        microphone_settings_changed = Microphone.set_recording_duration(mic_settings, mic_duration) or microphone_settings_changed
-
     camera_settings_changed = False
     camera_settings = Camera.load_settings()
     if args.set_camera_ip is not None:
@@ -379,12 +397,6 @@ def main():
             args.set_camera_record == "on",
         ) or camera_settings_changed
 
-    if args.set_camera_duration is not None:
-        camera_settings_changed = Camera.set_duration(
-            camera_settings,
-            args.set_camera_duration,
-        ) or camera_settings_changed
-
     if peripheral_settings_changed:
         save_peripheral_settings(peripheral_settings)
 
@@ -393,7 +405,10 @@ def main():
         return
 
     if peripheral_settings_changed:
-        print_enabled_peripheral_settings(peripheral_settings)
+        if record_time_changed:
+            print_system_info(peripheral_settings)
+        else:
+            print_enabled_peripheral_settings(peripheral_settings)
         return
 
     if motor_settings_changed or microphone_settings_changed or camera_settings_changed:
@@ -401,6 +416,7 @@ def main():
             show_motor=motor_selected or (motor_settings_changed and not mic_selected),
             show_mic=mic_selected or (microphone_settings_changed and not motor_selected),
             show_camera=camera_selected or (camera_settings_changed and not motor_selected and not mic_selected),
+            record_time=get_record_time(peripheral_settings),
         )
         return
 
@@ -410,7 +426,7 @@ def main():
             sample_rate = MICROPHONE_SAMPLE_RATE,
             channels = MICROPHONE_CHANNELS,
             file_format = MICROPHONE_FILE_FORMAT,
-            duration_seconds = MIC_DEFAULT_TIME,
+            duration_seconds = get_record_time(peripheral_settings),
         )
         return
 
