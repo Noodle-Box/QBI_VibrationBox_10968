@@ -2,13 +2,13 @@
 
 /*
  * Serial Controlled Vibration Platform
- * Commands: "s:80" (80% strength), "n:200" (200ms ON), "f:500" (500ms OFF)
+ * Commands: "s:150" (PWM strength), "n:200" (200ms ON), "m:500" (500ms OFF)
  */
 
 int motorPin = 9;
-int strength = 0; // PWM value, updated from Python with s:[0-100].
+int strength = 0; // PWM value, updated from Python with s:[0 or 30-250].
 int onTime = 0;   // Milliseconds, updated from Python with n:[ms].
-int offTime = 0;  // Milliseconds, updated from Python with f:[ms].
+int offTime = 0;  // Milliseconds, updated from Python with m:[ms].
 
 bool hasStrength = false;
 bool hasOnTime = false;
@@ -29,17 +29,17 @@ void handleCommand(String command) {
   int value = command.substring(separatorIndex + 1).toInt();
 
   if (type == 's') {
-    value = constrain(value, 0, 100);
-    strength = map(value, 0, 100, 0, 255);
+    value = constrain(value, 0, 250);
+    strength = value;
     hasStrength = true;
-    Serial.print("Strength set to: "); Serial.print(value); Serial.println("%");
+    Serial.print("Strength set to: "); Serial.println(value);
   } 
   else if (type == 'n') {
     onTime = max(value, 0);
     hasOnTime = true;
     Serial.print("On-Time set to: "); Serial.print(onTime); Serial.println("ms");
   } 
-  else if (type == 'f') {
+  else if (type == 'm' || type == 'f') {
     offTime = max(value, 0);
     hasOffTime = true;
     Serial.print("Off-Time set to: "); Serial.print(offTime); Serial.println("ms");
@@ -54,7 +54,7 @@ void setup() {
   pinMode(motorPin, OUTPUT);
   analogWrite(motorPin, 0);
   Serial.begin(9600);
-  Serial.println("System Ready. Waiting for Python: s:[0-100], n:[ms], f:[ms]");
+  Serial.println("System Ready. Waiting for Python: s:[0 or 30-250], n:[ms], m:[ms]");
 }
 
 void loop() {

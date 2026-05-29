@@ -12,7 +12,7 @@ import Motor
 # Motor Macros (Change if needed)
 MOTOR_SERIAL_PORT = "COM6"
 MOTOR_BAUD_RATE = 9600
-MOTOR_STRENGTH = 50  # Percent, 0-100. Arduino maps this to PWM 0-255.
+MOTOR_STRENGTH = 150  # Raw PWM strength, 30-250.
 MOTOR_ON_TIME = 200  # Milliseconds.
 MOTOR_OFF_TIME = 500  # Milliseconds.
 
@@ -120,7 +120,7 @@ def print_motor_settings():
     print(
         f"Serial Port: {motor_settings['serial_port']} \n"
         f"Baud Rate: {motor_settings['baud_rate']} \n"
-        f"Strength: {motor_settings['strength']}% \n"
+        f"Strength: {motor_settings['strength']} \n"
         f"On-Time: {motor_settings['on_time']} ms \n"
         f"Off-Time: {motor_settings['off_time']} ms"
     )
@@ -251,6 +251,7 @@ def run_enabled_peripherals(peripheral_settings):
                 "strength": motor_settings["strength"],
                 "on_time": motor_settings["on_time"],
                 "off_time": motor_settings["off_time"],
+                "duration_seconds": record_time,
             },
         )
         motor_thread.start()
@@ -351,7 +352,7 @@ def main():
         motor_settings_changed = set_motor_setting(
             motor_settings,
             "strength",
-            max(0, min(100, motor_strength)),
+            max(30, min(250, motor_strength)),
         ) or motor_settings_changed
 
     if motor_on_time is not None:
