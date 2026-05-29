@@ -66,6 +66,7 @@ python .\Main.py --set-time 60
 python .\Main.py --motor --set-port COM6 --set-strength 50 --set-on 200 --set-off 500
 python .\Main.py --mic --set-device 15 --set-format flac
 python .\Main.py --camera --set-camera-record on
+python .\Main.py --camera --set-view center
 ```
 
 To export an MP3 microphone preview instead of FLAC:
@@ -84,6 +85,15 @@ If the OAK-D PoE camera appears in OAK Viewer but not in Python discovery, copy 
 
 ```powershell
 python .\Main.py --camera --set-camera-ip 169.254.x.x
+```
+
+Camera view modes:
+
+```powershell
+python .\Main.py --camera --set-view center
+python .\Main.py --camera --set-view left
+python .\Main.py --camera --set-view right
+python .\Main.py --camera --set-view stereo
 ```
 
 Check current configuration:

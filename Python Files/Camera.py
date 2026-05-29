@@ -17,18 +17,24 @@ def default_settings():
     return {
         "device_ip": None,
         "record_video": True,
+        "view": "center",
     }
 
 
 def load_settings():
     if not SETTINGS_PATH.exists():
-        return default_settings()
+        settings = default_settings()
+        save_settings(settings)
+        return settings
 
     with SETTINGS_PATH.open("r", encoding="utf-8") as settings_file:
         settings = json.load(settings_file)
 
     defaults = default_settings()
     defaults.update(settings)
+    if defaults != settings:
+        save_settings(defaults)
+
     return defaults
 
 
@@ -52,6 +58,13 @@ def set_device_ip(settings, device_ip):
     settings["device_ip"] = device_ip.strip() if device_ip else None
     save_settings(settings)
     print(f"Camera IP set to {settings['device_ip'] or 'auto-discover'}.")
+    return True
+
+
+def set_camera_view(settings, view):
+    settings["view"] = view
+    save_settings(settings)
+    print(f"Camera view set to {view}.")
     return True
 
 
@@ -98,6 +111,56 @@ def create_rgb_output(pipeline, width, height, fps):
     output_capability.size.fixed((width, height))
     output_capability.fps.fixed(fps)
     return color_camera.requestOutput(output_capability, True)
+
+
+def create_mono_output(pipeline, socket, width, height, fps):
+    mono_camera = pipeline.create(dai.node.Camera).build(socket)
+    output_capability = dai.ImgFrameCapability()
+    output_capability.size.fixed((width, height))
+    output_capability.fps.fixed(fps)
+    return mono_camera.requestOutput(output_capability, True)
+
+
+def create_camera_outputs(pipeline, view, width, height, fps):
+    if view == "center":
+        return {
+            "center": create_rgb_output(pipeline, width, height, fps),
+        }
+
+    if view == "left":
+        return {
+            "left": create_mono_output(pipeline, dai.CameraBoardSocket.CAM_B, width, height, fps),
+        }
+
+    if view == "right":
+        return {
+            "right": create_mono_output(pipeline, dai.CameraBoardSocket.CAM_C, width, height, fps),
+        }
+
+    if view == "stereo":
+        return {
+            "left": create_mono_output(pipeline, dai.CameraBoardSocket.CAM_B, width, height, fps),
+            "right": create_mono_output(pipeline, dai.CameraBoardSocket.CAM_C, width, height, fps),
+        }
+
+    raise ValueError(f"Unknown camera view: {view}")
+
+
+def ensure_bgr(frame):
+    if len(frame.shape) == 2:
+        return cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+
+    return frame
+
+
+def get_preview_frame(view, queues):
+    if view == "stereo":
+        left = ensure_bgr(queues["left"].get().getCvFrame())
+        right = ensure_bgr(queues["right"].get().getCvFrame())
+        return cv2.hconcat([left, right])
+
+    queue = queues[view]
+    return ensure_bgr(queue.get().getCvFrame())
 
 
 def create_video_writer(path, fps, width, height):
@@ -164,6 +227,7 @@ def run_camera(
     file_format,
     device_ip=None,
     record_video=True,
+    view="center",
     window_name="OAK-D RGB",
     stop_event=None,
 ):
@@ -172,15 +236,17 @@ def run_camera(
     video_path = RECORDINGS_DIR / f"{recording_stem}.{output_format}"
     writer_path = video_path
     video_writer = None
+    output_width = width * 2 if view == "stereo" else width
+    output_height = height
 
     if record_video:
         if output_format == "h265":
             writer_path = RECORDINGS_DIR / f"{recording_stem}_capture.avi"
 
-        video_writer, writer_path = create_video_writer(writer_path, fps, width, height)
+        video_writer, writer_path = create_video_writer(writer_path, fps, output_width, output_height)
         print(f"Recording camera video to: {video_path}")
 
-    print("Starting camera preview. Press q in the camera window to close preview.")
+    print(f"Starting {view} camera preview. Press q in the camera window to close preview.")
 
     device_info = dai.DeviceInfo(device_ip) if device_ip else None
 
@@ -189,14 +255,16 @@ def run_camera(
 
     device_args = [device_info] if device_info else []
     with dai.Pipeline(dai.Device(*device_args)) as pipeline:
-        rgb_output = create_rgb_output(pipeline, width, height, fps)
-        rgb_queue = rgb_output.createOutputQueue(maxSize=4, blocking=False)
+        outputs = create_camera_outputs(pipeline, view, width, height, fps)
+        queues = {
+            name: output.createOutputQueue(maxSize=4, blocking=False)
+            for name, output in outputs.items()
+        }
         pipeline.start()
         start_time = time.monotonic()
 
         while True:
-            frame_packet = rgb_queue.get()
-            frame = frame_packet.getCvFrame()
+            frame = get_preview_frame(view, queues)
 
             if video_writer is not None:
                 video_writer.write(frame)
@@ -240,6 +308,7 @@ def print_camera_info(settings, width, height, fps, default_duration, file_forma
     print(
         f"Camera IP: {settings['device_ip'] or 'Auto-discover'} \n"
         f"Resolution: {width}x{height} \n"
+        f"View: {settings['view']} \n"
         f"FPS: {fps} \n"
         f"Duration: {duration_seconds} s \n"
         f"Format: {file_format} \n"
@@ -253,6 +322,12 @@ def add_camera_arguments(parser):
     parser.add_argument("--list-cameras", action="store_true", help="List available OAK cameras.")
     parser.add_argument("--set-camera-ip", help="Save the OAK-D PoE camera IP address.")
     parser.add_argument("--set-camera-record", choices=["on", "off"], help="Enable or disable camera video recording.")
+    parser.add_argument(
+        "--set-view",
+        dest="set_view",
+        choices=["center", "left", "right", "stereo"],
+        help="Save camera view mode.",
+    )
 
 
 def handle_camera_args(args, width, height, fps, default_duration, file_format):
@@ -268,6 +343,9 @@ def handle_camera_args(args, width, height, fps, default_duration, file_format):
 
     if args.set_camera_record is not None:
         settings_changed = set_record_video(settings, args.set_camera_record == "on") or settings_changed
+
+    if args.set_view is not None:
+        settings_changed = set_camera_view(settings, args.set_view) or settings_changed
 
     if settings_changed:
         print_camera_info(settings, width, height, fps, default_duration, file_format)

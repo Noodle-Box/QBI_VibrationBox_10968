@@ -33,7 +33,7 @@ CAMERA_FILE_FORMAT = "H265"
 
 # Recording Macros (Change if needed)
 DEFAULT_RECORD_TIME = 60.0  # Shared microphone and camera recording duration in seconds.
-KILL_BUTTON = "v"
+KILL_BUTTON = "k"  # Press this key to stop all peripherals during recording.
 
 PERIPHERAL_SETTINGS_PATH = Path(__file__).resolve().parent / "peripheral_settings.json"
 MOTOR_SETTINGS_PATH = Path(__file__).resolve().parent / "motor_settings.json"
@@ -228,6 +228,7 @@ def run_camera(record_time, stop_event=None):
             file_format=CAMERA_FILE_FORMAT,
             device_ip=camera_settings["device_ip"],
             record_video=camera_settings["record_video"],
+            view=camera_settings["view"],
             stop_event=stop_event,
         )
     except Exception as exc:
@@ -420,6 +421,16 @@ def main():
         )
         return
 
+    if args.camera and Camera.handle_camera_args(
+        args,
+        width=CAMERA_WIDTH,
+        height=CAMERA_HEIGHT,
+        fps=CAMERA_FPS,
+        default_duration=get_record_time(peripheral_settings),
+        file_format=CAMERA_FILE_FORMAT,
+    ):
+        return
+
     peripheral_settings_changed = False
     record_time_changed = False
     if args.set_motor is not None:
@@ -496,18 +507,6 @@ def main():
         microphone_settings_changed = Microphone.set_recording_format(mic_settings, args.set_format) or microphone_settings_changed
 
     camera_settings_changed = False
-    camera_settings = Camera.load_settings()
-    if args.set_camera_ip is not None:
-        camera_settings_changed = Camera.set_device_ip(
-            camera_settings,
-            args.set_camera_ip,
-        ) or camera_settings_changed
-
-    if args.set_camera_record is not None:
-        camera_settings_changed = Camera.set_record_video(
-            camera_settings,
-            args.set_camera_record == "on",
-        ) or camera_settings_changed
 
     if peripheral_settings_changed:
         save_peripheral_settings(peripheral_settings)
