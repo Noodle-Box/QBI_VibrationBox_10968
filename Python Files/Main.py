@@ -22,13 +22,13 @@ MOTOR_OFF_TIME = 500  # Milliseconds.
 # Microphone Macros (Change if needed)
 MICROPHONE_SAMPLE_RATE = 384000  # Sample rate in Hz.
 MICROPHONE_CHANNELS = 1  # Mono recording. Set to 2 for stereo if microphone supports it.
-MICROPHONE_FILE_FORMAT = "WAV"
+MICROPHONE_FILE_FORMAT = "FLAC"
 
 # Camera Macros (Change if needed)
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720
 CAMERA_FPS = 30
-CAMERA_FILE_FORMAT = "AVI"
+CAMERA_FILE_FORMAT = "H265"
 
 # Recording Macros (Change if needed)
 DEFAULT_RECORD_TIME = 60.0  # Shared microphone and camera recording duration in seconds.
@@ -243,18 +243,27 @@ def merge_audio_video(video_path, audio_path):
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = Camera.RECORDINGS_DIR / f"merged_av_{timestamp}.mp4"
+    video_input_args = []
+    if Path(video_path).suffix.lower() == ".h265":
+        video_input_args = ["-framerate", str(CAMERA_FPS)]
+
     command = [
         ffmpeg,
         "-y",
         "-hide_banner",
         "-loglevel",
         "error",
+        *video_input_args,
         "-i",
         str(video_path),
         "-i",
         str(audio_path),
         "-c:v",
-        "libx264",
+        "libx265",
+        "-x265-params",
+        "log-level=error",
+        "-tag:v",
+        "hvc1",
         "-pix_fmt",
         "yuv420p",
         "-c:a",
@@ -276,7 +285,7 @@ def merge_audio_video(video_path, audio_path):
         return None
 
     print(f"Saved merged audio/video MP4: {output_path}")
-    print("Note: merged MP4 audio is downsampled to 48 kHz. Raw WAV keeps the original microphone data.")
+    print("Note: merged MP4 audio is downsampled to 48 kHz. The standalone audio recording keeps the original microphone data.")
     return output_path
 
 

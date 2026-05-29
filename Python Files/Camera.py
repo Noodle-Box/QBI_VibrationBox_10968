@@ -1,4 +1,6 @@
 import json
+import shutil
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -121,6 +123,35 @@ def create_video_writer(path, fps, width, height):
     raise RuntimeError("Could not open an OpenCV video writer for AVI or MP4.")
 
 
+def convert_video_to_h265(input_path, output_path):
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        print("ffmpeg was not found, so H.265 export was skipped.")
+        print(f"Camera video saved at: {input_path}")
+        return input_path
+
+    command = [
+        ffmpeg,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(input_path),
+        "-c:v",
+        "libx265",
+        "-x265-params",
+        "log-level=error",
+        "-an",
+        "-f",
+        "hevc",
+        str(output_path),
+    ]
+    subprocess.run(command, check=True, capture_output=True, text=True)
+    input_path.unlink(missing_ok=True)
+    return output_path
+
+
 def run_camera(
     width,
     height,
@@ -132,11 +163,16 @@ def run_camera(
     window_name="OAK-D RGB",
 ):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    video_path = RECORDINGS_DIR / f"oak_rgb_{timestamp}.{file_format.lower()}"
+    output_format = file_format.lower()
+    video_path = RECORDINGS_DIR / f"oak_rgb_{timestamp}.{output_format}"
+    writer_path = video_path
     video_writer = None
 
     if record_video:
-        video_writer, video_path = create_video_writer(video_path, fps, width, height)
+        if output_format == "h265":
+            writer_path = RECORDINGS_DIR / f"oak_rgb_{timestamp}_capture.avi"
+
+        video_writer, writer_path = create_video_writer(writer_path, fps, width, height)
         print(f"Recording camera video to: {video_path}")
 
     print("Starting camera preview. Press q in the camera window to close preview.")
@@ -175,6 +211,15 @@ def run_camera(
     cv2.destroyWindow(window_name)
 
     if record_video:
+        if output_format == "h265":
+            try:
+                video_path = convert_video_to_h265(writer_path, video_path)
+            except subprocess.CalledProcessError as exc:
+                print(f"H.265 export failed: {exc}")
+                if exc.stderr:
+                    print(exc.stderr)
+                video_path = writer_path
+
         print(f"Saved camera video: {video_path}")
         return video_path
 

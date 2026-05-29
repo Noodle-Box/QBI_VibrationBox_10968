@@ -10,7 +10,7 @@ Install all required Python packages with:
 
 python -m pip install pyserial sounddevice numpy depthai opencv-python
 
-Required non-pip dependency for MP3 export and audio/video merge:
+Required non-pip dependency for FLAC audio export, H.265 video export, MP3 export, and audio/video merge:
 
 - ffmpeg
 

@@ -18,7 +18,7 @@ DEFAULT_KEYWORD = "Pettersson"
 # Standalone Microphone.py Macros (Change if needed)
 DEFAULT_SAMPLE_RATE = 44100            # Use 44100 for standard pitch, 384000 for ultrasonic
 DEFAULT_CHANNELS = 1
-DEFAULT_FILE_FORMAT = "WAV"
+DEFAULT_FILE_FORMAT = "FLAC"
 DEFAULT_TIME = 5.0
 DEFAULT_RECORD = True
 
@@ -149,7 +149,7 @@ def normalize_file_format(file_format):
 
 def get_recording_format(settings, default_file_format=DEFAULT_FILE_FORMAT):
     file_format = normalize_file_format(settings.get("file_format", default_file_format))
-    if file_format not in ("wav", "mp3"):
+    if file_format not in ("wav", "mp3", "flac"):
         return normalize_file_format(default_file_format)
 
     return file_format
@@ -157,8 +157,8 @@ def get_recording_format(settings, default_file_format=DEFAULT_FILE_FORMAT):
 
 def set_recording_format(settings, file_format):
     file_format = normalize_file_format(file_format)
-    if file_format not in ("wav", "mp3"):
-        print("Microphone format must be wav or mp3.")
+    if file_format not in ("wav", "mp3", "flac"):
+        print("Microphone format must be wav, mp3, or flac.")
         return False
 
     settings["file_format"] = file_format
@@ -203,6 +203,29 @@ def write_wav(path, audio, sample_rate, channels):
         wav_file.setsampwidth(RESOLUTION // 8)
         wav_file.setframerate(sample_rate)
         wav_file.writeframes(audio.tobytes())
+
+
+def convert_wav_to_flac(wav_path, flac_path):
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        print("ffmpeg was not found, so FLAC export was skipped.")
+        print(f"Full-quality WAV saved at: {wav_path}")
+        return False
+
+    command = [
+        ffmpeg,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(wav_path),
+        "-codec:a",
+        "flac",
+        str(flac_path),
+    ]
+    subprocess.run(command, check=True, capture_output=True, text=True)
+    return True
 
 
 def convert_wav_to_mp3(wav_path, mp3_path):
@@ -319,8 +342,11 @@ def record_from_settings(
     duration_seconds = duration_override if duration_override is not None else duration_seconds
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     wav_path = RECORDINGS_DIR / f"m500_{timestamp}_{sample_rate}hz.wav"
+    flac_path = RECORDINGS_DIR / f"m500_{timestamp}_{sample_rate}hz.flac"
     mp3_path = RECORDINGS_DIR / f"m500_{timestamp}_preview.mp3"
-    export_mp3 = mp3 or get_recording_format(settings, file_format) == "mp3"
+    recording_format = get_recording_format(settings, file_format)
+    export_mp3 = mp3 or recording_format == "mp3"
+    export_flac = recording_format == "flac"
 
     try:
         audio = record_audio(device_index, duration_seconds, sample_rate, channels)
@@ -331,12 +357,36 @@ def record_from_settings(
         return None
 
     write_wav(wav_path, audio, sample_rate, channels)
-    print(f"Saved WAV: {wav_path}")
+    if not export_flac:
+        print(f"Saved WAV: {wav_path}")
+
+    if export_flac:
+        try:
+            flac_created = convert_wav_to_flac(wav_path, flac_path)
+        except subprocess.CalledProcessError as exc:
+            print(f"FLAC export failed: {exc}")
+            if exc.stderr:
+                print(exc.stderr)
+            return wav_path
+
+        if flac_created:
+            print(f"Saved FLAC: {flac_path}")
+            wav_path.unlink(missing_ok=True)
+            return flac_path
 
     if export_mp3:
-        if convert_wav_to_mp3(wav_path, mp3_path):
+        try:
+            mp3_created = convert_wav_to_mp3(wav_path, mp3_path)
+        except subprocess.CalledProcessError as exc:
+            print(f"MP3 export failed: {exc}")
+            if exc.stderr:
+                print(exc.stderr)
+            return wav_path
+
+        if mp3_created:
             print(f"Saved MP3 preview: {mp3_path}")
             print("Note: MP3 is downsampled to 48 kHz and will not preserve ultrasonic content.")
+            return mp3_path
 
     return wav_path
 
@@ -346,7 +396,7 @@ def add_microphone_arguments(parser):
     parser.add_argument("--list-devices", action="store_true", help="Show input microphone devices and exit.")
     parser.add_argument("--filter", help="Only list microphones whose names contain this keyword.")
     parser.add_argument("--set-device", type=int, help="Save the system input device index used for recording.")
-    parser.add_argument("--set-format", choices=["wav", "mp3"], help="Save microphone output format.")
+    parser.add_argument("--set-format", choices=["wav", "mp3", "flac"], help="Save microphone output format.")
     parser.add_argument("--info", action="store_true", help="Show the current recording settings and exit.")
     parser.add_argument("--record-mic", action="store_true", help="Record microphone audio using saved settings.")
     parser.add_argument("--device", type=int, help="System input device index. Overrides keyword search.")

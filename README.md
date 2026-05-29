@@ -19,7 +19,7 @@ cd "Python Files"
 python -m pip install pyserial sounddevice numpy depthai opencv-python
 ```
 
-5. Install `ffmpeg`, which is required for MP3 preview export and merged camera/audio video:
+5. Install `ffmpeg`, which is required for FLAC audio export, H.265 video export, MP3 preview export, and merged camera/audio video:
 
 ```powershell
 winget install Gyan.FFmpeg
@@ -64,11 +64,11 @@ Configure peripherals:
 python .\Main.py --set-motor on --set-mic on --set-camera on
 python .\Main.py --set-time 60
 python .\Main.py --motor --set-port COM6 --set-strength 50 --set-on 200 --set-off 500
-python .\Main.py --mic --set-device 15 --set-format wav
+python .\Main.py --mic --set-device 15 --set-format flac
 python .\Main.py --camera --set-camera-record on
 ```
 
-To also export an MP3 microphone preview after each WAV recording:
+To export an MP3 microphone preview instead of FLAC:
 
 ```powershell
 python .\Main.py --mic --set-format mp3
