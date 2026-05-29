@@ -10,6 +10,14 @@ Install all required Python packages with:
 
 python -m pip install pyserial sounddevice numpy depthai opencv-python
 
-Optional non-pip dependency:
+Required non-pip dependency for MP3 export and audio/video merge:
 
-- ffmpeg, only needed for MP3 preview export
+- ffmpeg
+
+Install ffmpeg on Windows with:
+
+winget install Gyan.FFmpeg
+
+Then restart PowerShell or VSCode terminal and verify with:
+
+ffmpeg --version

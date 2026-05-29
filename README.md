@@ -11,7 +11,7 @@ Python-controlled vibration box project with:
 
 1. Clone or copy this repository.
 2. Install Python.
-3. Install VSCode and the PlatformIO extension.
+3. Install VSCode. When prompted, install the recommended Python extensions.
 4. Install required Python packages:
 
 ```powershell
@@ -19,7 +19,20 @@ cd "Python Files"
 python -m pip install pyserial sounddevice numpy depthai opencv-python
 ```
 
-Optional: install `ffmpeg` separately if MP3 preview export is needed.
+5. Install `ffmpeg`, which is required for MP3 preview export and merged camera/audio video:
+
+```powershell
+winget install Gyan.FFmpeg
+ffmpeg --version
+```
+
+If `ffmpeg --version` is not recognized right after install, restart PowerShell or the VSCode terminal.
+
+Recommended VSCode extensions for the Python-side workflow:
+
+- Python (`ms-python.python`)
+- Pylance (`ms-python.vscode-pylance`)
+- Python Debugger (`ms-python.debugpy`)
 
 ## Arduino Firmware
 
