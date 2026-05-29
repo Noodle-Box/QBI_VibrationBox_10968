@@ -117,15 +117,14 @@ def merge_label(enabled):
 
 
 def print_section_header(title):
-    separator = "-" * 77
+    separator = "=" * 77
     print(separator)
     print(title)
     print(separator)
 
 
 def print_section_footer():
-    print()
-    print("-" * 77)
+    print("=" * 77)
 
 
 def get_record_time(settings=None):
@@ -251,7 +250,9 @@ def print_selected_peripheral_settings(show_motor, show_mic, show_camera, record
 
 
 def print_system_info(settings):
+    print_section_footer()
     print("PERIPHERAL SETTINGS")
+    print_section_footer()
     print(f"Motor: {on_off_label(settings['motor_enabled'])}")
     print(f"Mic: {on_off_label(settings['mic_enabled'])}")
     print(f"Camera: {on_off_label(settings['camera_enabled'])}")
