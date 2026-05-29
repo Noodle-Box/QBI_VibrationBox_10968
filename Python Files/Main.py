@@ -105,11 +105,12 @@ def get_record_time(settings=None):
 
 
 def print_microphone_settings(record_time):
+    mic_settings = Microphone.load_settings()
     Microphone.print_recording_info(
-        Microphone.load_settings(),
+        mic_settings,
         sample_rate=MICROPHONE_SAMPLE_RATE,
         channels=MICROPHONE_CHANNELS,
-        file_format=MICROPHONE_FILE_FORMAT,
+        file_format=Microphone.get_recording_format(mic_settings, MICROPHONE_FILE_FORMAT),
         default_duration=record_time,
     )
 
@@ -192,12 +193,13 @@ def print_system_info(settings):
 
 
 def record_microphone(record_time):
+    mic_settings = Microphone.load_settings()
     Microphone.record_from_settings(
-        Microphone.load_settings(),
+        mic_settings,
         sample_rate=MICROPHONE_SAMPLE_RATE,
         channels=MICROPHONE_CHANNELS,
         duration_seconds=record_time,
-        file_format=MICROPHONE_FILE_FORMAT,
+        file_format=Microphone.get_recording_format(mic_settings, MICROPHONE_FILE_FORMAT),
         duration_override=record_time,
     )
 
@@ -271,25 +273,13 @@ def run_enabled_peripherals(peripheral_settings):
 
 def main():
     parser = argparse.ArgumentParser(description="Control motor, microphone, and camera peripherals.")
+    Motor.add_motor_arguments(parser)
     Microphone.add_microphone_arguments(parser)
     Camera.add_camera_arguments(parser)
-    parser.add_argument("--motor", action="store_true", help="Configure or target motor settings.")
-    parser.add_argument("--mic", action="store_true", help="Configure or target microphone settings.")
     parser.add_argument("--set-motor", choices=["on", "off"], help="Enable or disable the motor driver.")
     parser.add_argument("--set-mic", choices=["on", "off"], help="Enable or disable the microphone.")
     parser.add_argument("--set-camera", choices=["on", "off"], help="Enable or disable the camera.")
-    parser.add_argument("--set-record-time", type=float, help="Save shared microphone/camera recording time in seconds.")
-    parser.add_argument("--set-strength", type=int, help="With --motor, save motor strength percent, 0-100.")
-    parser.add_argument("--set-on", type=int, help="With --motor, save motor on-time in milliseconds.")
-    parser.add_argument("--set-off", type=int, help="With --motor, save motor off-time in milliseconds.")
-    parser.add_argument("--set-port", help="With --motor, save the Arduino serial port.")
-    parser.add_argument("--set-baud", type=int, help="With --motor, save the Arduino serial baud rate.")
-    parser.add_argument("--set-duration", type=float, help="With --mic, save the recording duration in seconds.")
-    parser.add_argument("--motor-port", help="Save the Arduino serial port used by the motor driver.")
-    parser.add_argument("--motor-baud", type=int, help="Save the Arduino serial baud rate.")
-    parser.add_argument("--motor-strength", type=int, help="Save motor strength percent, 0-100.")
-    parser.add_argument("--motor-on-time", type=int, help="Save motor on-time in milliseconds.")
-    parser.add_argument("--motor-off-time", type=int, help="Save motor off-time in milliseconds.")
+    parser.add_argument("--set-time", type=float, help="Save shared microphone/camera recording time in seconds.")
     args = parser.parse_args()
     peripheral_settings = load_peripheral_settings()
     motor_settings = load_motor_settings()
@@ -329,7 +319,7 @@ def main():
         peripheral_settings["camera_enabled"] = args.set_camera == "on"
         peripheral_settings_changed = True
 
-    requested_record_time = args.set_record_time
+    requested_record_time = args.set_time
 
     if requested_record_time is not None:
         if requested_record_time <= 0:
@@ -382,6 +372,9 @@ def main():
     mic_settings = Microphone.load_settings()
     if args.set_device is not None:
         microphone_settings_changed = Microphone.set_recording_device(mic_settings, args.set_device) or microphone_settings_changed
+
+    if args.set_format is not None:
+        microphone_settings_changed = Microphone.set_recording_format(mic_settings, args.set_format) or microphone_settings_changed
 
     camera_settings_changed = False
     camera_settings = Camera.load_settings()

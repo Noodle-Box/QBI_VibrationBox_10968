@@ -4,6 +4,20 @@ import serial
 from serial.tools import list_ports
 
 
+def add_motor_arguments(parser):
+    parser.add_argument("--motor", action="store_true", help="Configure or target motor settings.")
+    parser.add_argument("--set-strength", type=int, help="With --motor, save motor strength percent, 0-100.")
+    parser.add_argument("--set-on", type=int, help="With --motor, save motor on-time in milliseconds.")
+    parser.add_argument("--set-off", type=int, help="With --motor, save motor off-time in milliseconds.")
+    parser.add_argument("--set-port", help="With --motor, save the Arduino serial port.")
+    parser.add_argument("--set-baud", type=int, help="With --motor, save the Arduino serial baud rate.")
+    parser.add_argument("--motor-port", help="Save the Arduino serial port used by the motor driver.")
+    parser.add_argument("--motor-baud", type=int, help="Save the Arduino serial baud rate.")
+    parser.add_argument("--motor-strength", type=int, help="Save motor strength percent, 0-100.")
+    parser.add_argument("--motor-on-time", type=int, help="Save motor on-time in milliseconds.")
+    parser.add_argument("--motor-off-time", type=int, help="Save motor off-time in milliseconds.")
+
+
 def clamp(value, minimum, maximum):
     return max(minimum, min(maximum, int(value)))
 

@@ -13,12 +13,20 @@ import sounddevice as sd
 RESOLUTION = 16
 RECORDINGS_DIR = Path(__file__).resolve().parent / "recordings"
 SETTINGS_PATH = Path(__file__).resolve().parent / "microphone_settings.json"
-DEFAULT_AUTO_SELECT_KEYWORD = "Pettersson"
+DEFAULT_KEYWORD = "Pettersson"
+
+# Standalone Microphone.py Macros (Change if needed)
+DEFAULT_SAMPLE_RATE = 44100            # Use 44100 for standard pitch, 384000 for ultrasonic
+DEFAULT_CHANNELS = 1
+DEFAULT_FILE_FORMAT = "WAV"
+DEFAULT_TIME = 5.0
+DEFAULT_RECORD = True
 
 
 def default_settings():
     return {
         "device_index": None,
+        "file_format": DEFAULT_FILE_FORMAT.lower(),
     }
 
 
@@ -135,9 +143,37 @@ def set_recording_device(settings, device_index):
     return True
 
 
+def normalize_file_format(file_format):
+    return file_format.strip().lower()
+
+
+def get_recording_format(settings, default_file_format=DEFAULT_FILE_FORMAT):
+    file_format = normalize_file_format(settings.get("file_format", default_file_format))
+    if file_format not in ("wav", "mp3"):
+        return normalize_file_format(default_file_format)
+
+    return file_format
+
+
+def set_recording_format(settings, file_format):
+    file_format = normalize_file_format(file_format)
+    if file_format not in ("wav", "mp3"):
+        print("Microphone format must be wav or mp3.")
+        return False
+
+    settings["file_format"] = file_format
+    save_settings(settings)
+    print(f"Microphone format set to {file_format.upper()}.")
+    if file_format == "mp3":
+        print("MP3 export requires ffmpeg. A full-quality WAV is still recorded first.")
+
+    return True
+
+
 def print_recording_info(settings, sample_rate, channels, file_format, default_duration):
     device_index = settings["device_index"]
     duration_seconds = default_duration
+    file_format = get_recording_format(settings, file_format).upper()
 
     device_label = "Auto-select"
 
@@ -218,7 +254,7 @@ def can_record_from_settings(
     settings,
     sample_rate,
     channels,
-    keyword=DEFAULT_AUTO_SELECT_KEYWORD,
+    keyword=DEFAULT_KEYWORD,
     device_override=None,
 ):
     device_index = resolve_recording_device(settings, keyword, device_override)
@@ -265,7 +301,7 @@ def record_from_settings(
     channels,
     duration_seconds,
     file_format,
-    keyword=DEFAULT_AUTO_SELECT_KEYWORD,
+    keyword=DEFAULT_KEYWORD,
     device_override=None,
     duration_override=None,
     mp3=False,
@@ -281,6 +317,7 @@ def record_from_settings(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     wav_path = RECORDINGS_DIR / f"m500_{timestamp}_{sample_rate}hz.wav"
     mp3_path = RECORDINGS_DIR / f"m500_{timestamp}_preview.mp3"
+    export_mp3 = mp3 or get_recording_format(settings, file_format) == "mp3"
 
     try:
         audio = record_audio(device_index, duration_seconds, sample_rate, channels)
@@ -291,9 +328,9 @@ def record_from_settings(
         return None
 
     write_wav(wav_path, audio, sample_rate, channels)
-    print(f"Saved {file_format}: {wav_path}")
+    print(f"Saved WAV: {wav_path}")
 
-    if mp3:
+    if export_mp3:
         if convert_wav_to_mp3(wav_path, mp3_path):
             print(f"Saved MP3 preview: {mp3_path}")
             print("Note: MP3 is downsampled to 48 kHz and will not preserve ultrasonic content.")
@@ -302,13 +339,15 @@ def record_from_settings(
 
 
 def add_microphone_arguments(parser):
+    parser.add_argument("--mic", action="store_true", help="Configure or target microphone settings.")
     parser.add_argument("--list-devices", action="store_true", help="Show input microphone devices and exit.")
     parser.add_argument("--filter", help="Only list microphones whose names contain this keyword.")
     parser.add_argument("--set-device", type=int, help="Save the system input device index used for recording.")
+    parser.add_argument("--set-format", choices=["wav", "mp3"], help="Save microphone output format.")
     parser.add_argument("--info", action="store_true", help="Show the current recording settings and exit.")
     parser.add_argument("--record-mic", action="store_true", help="Record microphone audio using saved settings.")
     parser.add_argument("--device", type=int, help="System input device index. Overrides keyword search.")
-    parser.add_argument("--keyword", default=DEFAULT_AUTO_SELECT_KEYWORD, help="Device name keyword to auto-select for recording.")
+    parser.add_argument("--keyword", default=DEFAULT_KEYWORD, help="Device name keyword to auto-select for recording.")
     parser.add_argument("--duration", type=float, help="One-time recording length in seconds.")
     parser.add_argument("--mp3", action="store_true", help="Also export an MP3 preview using ffmpeg.")
 
@@ -330,6 +369,9 @@ def handle_microphone_args(
     settings_changed = False
     if args.set_device is not None:
         settings_changed = set_recording_device(settings, args.set_device) or settings_changed
+
+    if args.set_format is not None:
+        settings_changed = set_recording_format(settings, args.set_format) or settings_changed
 
     if args.info:
         print_recording_info(settings, sample_rate, channels, file_format, duration_seconds)
@@ -370,11 +412,11 @@ def main():
     args = parser.parse_args()
     handle_microphone_args(
         args,
-        sample_rate=384000,
-        channels=1,
-        file_format="WAV",
-        duration_seconds=5.0,
-        record_when_no_command=True,
+        sample_rate=DEFAULT_SAMPLE_RATE,
+        channels=DEFAULT_CHANNELS,
+        file_format=DEFAULT_FILE_FORMAT,
+        duration_seconds=DEFAULT_TIME,
+        record_when_no_command=DEFAULT_RECORD,
     )
 
 

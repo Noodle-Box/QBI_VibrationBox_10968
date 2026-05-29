@@ -49,10 +49,16 @@ Configure peripherals:
 
 ```powershell
 python .\Main.py --set-motor on --set-mic on --set-camera on
-python .\Main.py --set-record-time 60
+python .\Main.py --set-time 60
 python .\Main.py --motor --set-port COM6 --set-strength 50 --set-on 200 --set-off 500
-python .\Main.py --mic --set-device 15
+python .\Main.py --mic --set-device 15 --set-format wav
 python .\Main.py --camera --set-camera-record on
+```
+
+To also export an MP3 microphone preview after each WAV recording:
+
+```powershell
+python .\Main.py --mic --set-format mp3
 ```
 
 List OAK cameras:
