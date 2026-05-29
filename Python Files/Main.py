@@ -11,6 +11,7 @@ from pathlib import Path
 import Camera
 import Microphone
 import Motor
+import Speaker
 
 
 # Motor Macros (Change if needed)
@@ -31,6 +32,13 @@ CAMERA_HEIGHT = 720
 CAMERA_FPS = 30
 CAMERA_FILE_FORMAT = "H265"
 
+# Speaker Macros (Change if needed)
+SPEAKER_FREQUENCY_HZ = 500
+SPEAKER_BEEP_DURATION = 1.0
+SPEAKER_INTERVAL = 3.0
+SPEAKER_SAMPLE_RATE = 44100
+SPEAKER_AMPLITUDE = 0.25
+
 # Recording Macros (Change if needed)
 DEFAULT_RECORD_TIME = 60.0  # Shared microphone and camera recording duration in seconds.
 KILL_BUTTON = "k"  # Press this key to stop all peripherals during recording.
@@ -44,6 +52,7 @@ def default_peripheral_settings():
         "motor_enabled": True,
         "mic_enabled": True,
         "camera_enabled": False,
+        "speaker_enabled": False,
         "record_time": None,
         "merge_av_enabled": False,
     }
@@ -143,6 +152,16 @@ def print_camera_settings(record_time):
     )
 
 
+def print_speaker_settings():
+    print(
+        f"Frequency: {SPEAKER_FREQUENCY_HZ} Hz \n"
+        f"Beep Duration: {SPEAKER_BEEP_DURATION} s \n"
+        f"Interval: {SPEAKER_INTERVAL} s \n"
+        f"Sample Rate: {SPEAKER_SAMPLE_RATE} Hz \n"
+        f"Amplitude: {SPEAKER_AMPLITUDE}"
+    )
+
+
 def print_enabled_peripheral_settings(settings):
     record_time = get_record_time(settings)
 
@@ -164,12 +183,24 @@ def print_enabled_peripheral_settings(settings):
         print("Camera Settings")
         print_camera_settings(record_time)
 
+    if (settings["motor_enabled"] or settings["mic_enabled"] or settings["camera_enabled"]) and settings["speaker_enabled"]:
+        print()
+
+    if settings["speaker_enabled"]:
+        print("Speaker Settings")
+        print_speaker_settings()
+
     if settings["mic_enabled"] and settings["camera_enabled"]:
         print()
         print("Audio/Video Merge")
         print(f"Merge MP4: {on_off_label(settings['merge_av_enabled'])}")
 
-    if not settings["motor_enabled"] and not settings["mic_enabled"] and not settings["camera_enabled"]:
+    if (
+        not settings["motor_enabled"]
+        and not settings["mic_enabled"]
+        and not settings["camera_enabled"]
+        and not settings["speaker_enabled"]
+    ):
         print("No peripherals are enabled.")
 
 
@@ -198,6 +229,7 @@ def print_system_info(settings):
     print(f"Motor: {on_off_label(settings['motor_enabled'])}")
     print(f"Mic: {on_off_label(settings['mic_enabled'])}")
     print(f"Camera: {on_off_label(settings['camera_enabled'])}")
+    print(f"Speaker: {on_off_label(settings['speaker_enabled'])}")
     print(f"Record Time: {get_record_time(settings)} s")
     print(f"Merge Audio/Video: {on_off_label(settings['merge_av_enabled'])}")
     print()
@@ -234,6 +266,21 @@ def run_camera(record_time, stop_event=None):
     except Exception as exc:
         print(f"Camera stopped with an error: {exc}")
         return None
+
+
+def run_speaker(record_time, stop_event=None):
+    try:
+        Speaker.run_speaker(
+            duration_seconds=record_time,
+            stop_event=stop_event,
+            frequency_hz=SPEAKER_FREQUENCY_HZ,
+            beep_duration_seconds=SPEAKER_BEEP_DURATION,
+            interval_seconds=SPEAKER_INTERVAL,
+            sample_rate=SPEAKER_SAMPLE_RATE,
+            amplitude=SPEAKER_AMPLITUDE,
+        )
+    except Exception as exc:
+        print(f"Speaker stopped with an error: {exc}")
 
 
 def get_recording_stem():
@@ -312,11 +359,12 @@ def run_enabled_peripherals(peripheral_settings):
     motor_enabled = peripheral_settings["motor_enabled"]
     mic_enabled = peripheral_settings["mic_enabled"]
     camera_enabled = peripheral_settings["camera_enabled"]
+    speaker_enabled = peripheral_settings["speaker_enabled"]
     merge_enabled = peripheral_settings["merge_av_enabled"]
     record_time = get_record_time(peripheral_settings)
 
-    if not motor_enabled and not mic_enabled and not camera_enabled:
-        print("No peripherals are enabled. Use --set-motor on, --set-mic on, or --set-camera on.")
+    if not motor_enabled and not mic_enabled and not camera_enabled and not speaker_enabled:
+        print("No peripherals are enabled. Use --set-motor on, --set-mic on, --set-camera on, or --set-speaker on.")
         return
 
     if mic_enabled:
@@ -370,6 +418,11 @@ def run_enabled_peripherals(peripheral_settings):
         camera_thread.start()
         worker_threads.append(camera_thread)
 
+    if speaker_enabled:
+        speaker_thread = threading.Thread(target=run_speaker, args=(record_time, stop_event))
+        speaker_thread.start()
+        worker_threads.append(speaker_thread)
+
     if mic_enabled:
         recording_paths["audio"] = record_microphone(record_time, stop_event)
         for worker_thread in worker_threads:
@@ -394,6 +447,8 @@ def main():
     parser.add_argument("--set-motor", choices=["on", "off"], help="Enable or disable the motor driver.")
     parser.add_argument("--set-mic", choices=["on", "off"], help="Enable or disable the microphone.")
     parser.add_argument("--set-camera", choices=["on", "off"], help="Enable or disable the camera.")
+    parser.add_argument("--set-speaker", choices=["on", "off"], help="Enable or disable the speaker beep.")
+    parser.add_argument("--set-all", choices=["on", "off"], help="Enable or disable motor, microphone, camera, and speaker.")
     parser.add_argument("--set-time", type=float, help="Save shared microphone/camera recording time in seconds.")
     parser.add_argument("--set-merge", choices=["on", "off"], help="Enable or disable merged camera/audio MP4 export.")
     args = parser.parse_args()
@@ -433,6 +488,14 @@ def main():
 
     peripheral_settings_changed = False
     record_time_changed = False
+    if args.set_all is not None:
+        enabled = args.set_all == "on"
+        peripheral_settings["motor_enabled"] = enabled
+        peripheral_settings["mic_enabled"] = enabled
+        peripheral_settings["camera_enabled"] = enabled
+        peripheral_settings["speaker_enabled"] = enabled
+        peripheral_settings_changed = True
+
     if args.set_motor is not None:
         peripheral_settings["motor_enabled"] = args.set_motor == "on"
         peripheral_settings_changed = True
@@ -443,6 +506,10 @@ def main():
 
     if args.set_camera is not None:
         peripheral_settings["camera_enabled"] = args.set_camera == "on"
+        peripheral_settings_changed = True
+
+    if args.set_speaker is not None:
+        peripheral_settings["speaker_enabled"] = args.set_speaker == "on"
         peripheral_settings_changed = True
 
     if args.set_merge is not None:

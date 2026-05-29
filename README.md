@@ -6,6 +6,7 @@ Python-controlled vibration box project with:
 - Python motor control over serial
 - Python ultrasonic microphone recording
 - Python OAK-D PoE camera preview and video recording
+- Python speaker beep output
 
 ## Setup
 
@@ -61,7 +62,8 @@ python .\Main.py --list-devices --filter "Pettersson"
 Configure peripherals:
 
 ```powershell
-python .\Main.py --set-motor on --set-mic on --set-camera on
+python .\Main.py --set-all on
+python .\Main.py --set-motor on --set-mic on --set-camera on --set-speaker on
 python .\Main.py --set-time 60
 python .\Main.py --motor --set-port COM6 --set-strength 50 --set-on 200 --set-off 500
 python .\Main.py --mic --set-device 15 --set-format flac
@@ -94,6 +96,12 @@ python .\Main.py --camera --set-view center
 python .\Main.py --camera --set-view left
 python .\Main.py --camera --set-view right
 python .\Main.py --camera --set-view stereo
+```
+
+Enable speaker beep output:
+
+```powershell
+python .\Main.py --set-speaker on
 ```
 
 Check current configuration:
