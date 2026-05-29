@@ -112,6 +112,22 @@ def on_off_label(enabled):
     return "On" if enabled else "Off"
 
 
+def merge_label(enabled):
+    return "MP4" if enabled else "Off"
+
+
+def print_section_header(title):
+    separator = "-" * 77
+    print(separator)
+    print(title)
+    print(separator)
+
+
+def print_section_footer():
+    print()
+    print("-" * 77)
+
+
 def get_record_time(settings=None):
     if settings is None:
         settings = load_peripheral_settings()
@@ -164,36 +180,36 @@ def print_speaker_settings():
 
 def print_enabled_peripheral_settings(settings):
     record_time = get_record_time(settings)
+    printed_section = False
 
     if settings["motor_enabled"]:
-        print("Motor Settings")
+        print_section_header("Settings: MOTOR")
         print_motor_settings()
+        printed_section = True
 
-    if settings["motor_enabled"] and settings["mic_enabled"]:
+    if printed_section and settings["mic_enabled"]:
         print()
 
     if settings["mic_enabled"]:
-        print("Microphone Settings")
+        print_section_header("Settings: MICROPHONE")
         print_microphone_settings(record_time)
+        printed_section = True
 
-    if (settings["motor_enabled"] or settings["mic_enabled"]) and settings["camera_enabled"]:
+    if printed_section and settings["camera_enabled"]:
         print()
 
     if settings["camera_enabled"]:
-        print("Camera Settings")
+        print_section_header("Settings: CAMERA")
         print_camera_settings(record_time)
+        printed_section = True
 
-    if (settings["motor_enabled"] or settings["mic_enabled"] or settings["camera_enabled"]) and settings["speaker_enabled"]:
+    if printed_section and settings["speaker_enabled"]:
         print()
 
     if settings["speaker_enabled"]:
-        print("Speaker Settings")
+        print_section_header("Settings: SPEAKER")
         print_speaker_settings()
-
-    if settings["mic_enabled"] and settings["camera_enabled"]:
-        print()
-        print("Audio/Video Merge")
-        print(f"Merge MP4: {on_off_label(settings['merge_av_enabled'])}")
+        printed_section = True
 
     if (
         not settings["motor_enabled"]
@@ -202,36 +218,46 @@ def print_enabled_peripheral_settings(settings):
         and not settings["speaker_enabled"]
     ):
         print("No peripherals are enabled.")
+    elif printed_section:
+        print_section_footer()
 
 
 def print_selected_peripheral_settings(show_motor, show_mic, show_camera, record_time):
-    if show_motor:
-        print("Motor Settings")
-        print_motor_settings()
+    printed_section = False
 
-    if show_motor and (show_mic or show_camera):
+    if show_motor:
+        print_section_header("Settings: MOTOR")
+        print_motor_settings()
+        printed_section = True
+
+    if printed_section and (show_mic or show_camera):
         print()
 
     if show_mic:
-        print("Microphone Settings")
+        print_section_header("Settings: MICROPHONE")
         print_microphone_settings(record_time)
+        printed_section = True
 
-    if show_mic and show_camera:
+    if printed_section and show_camera:
         print()
 
     if show_camera:
-        print("Camera Settings")
+        print_section_header("Settings: CAMERA")
         print_camera_settings(record_time)
+        printed_section = True
+
+    if printed_section:
+        print_section_footer()
 
 
 def print_system_info(settings):
-    print("Peripheral State")
+    print("PERIPHERAL SETTINGS")
     print(f"Motor: {on_off_label(settings['motor_enabled'])}")
     print(f"Mic: {on_off_label(settings['mic_enabled'])}")
     print(f"Camera: {on_off_label(settings['camera_enabled'])}")
     print(f"Speaker: {on_off_label(settings['speaker_enabled'])}")
     print(f"Record Time: {get_record_time(settings)} s")
-    print(f"Merge Audio/Video: {on_off_label(settings['merge_av_enabled'])}")
+    print(f"Merge Audio/Video: {merge_label(settings['merge_av_enabled'])}")
     print()
     print_enabled_peripheral_settings(settings)
 
