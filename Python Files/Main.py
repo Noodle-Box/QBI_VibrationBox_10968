@@ -1,5 +1,6 @@
 import argparse
 import json
+import msvcrt
 import shutil
 import subprocess
 import threading
@@ -32,6 +33,7 @@ CAMERA_FILE_FORMAT = "H265"
 
 # Recording Macros (Change if needed)
 DEFAULT_RECORD_TIME = 60.0  # Shared microphone and camera recording duration in seconds.
+KILL_BUTTON = "v"
 
 PERIPHERAL_SETTINGS_PATH = Path(__file__).resolve().parent / "peripheral_settings.json"
 MOTOR_SETTINGS_PATH = Path(__file__).resolve().parent / "motor_settings.json"
@@ -202,7 +204,7 @@ def print_system_info(settings):
     print_enabled_peripheral_settings(settings)
 
 
-def record_microphone(record_time):
+def record_microphone(record_time, stop_event=None):
     mic_settings = Microphone.load_settings()
     return Microphone.record_from_settings(
         mic_settings,
@@ -211,10 +213,11 @@ def record_microphone(record_time):
         duration_seconds=record_time,
         file_format=Microphone.get_recording_format(mic_settings, MICROPHONE_FILE_FORMAT),
         duration_override=record_time,
+        stop_event=stop_event,
     )
 
 
-def run_camera(record_time):
+def run_camera(record_time, stop_event=None):
     camera_settings = Camera.load_settings()
     try:
         return Camera.run_camera(
@@ -225,6 +228,7 @@ def run_camera(record_time):
             file_format=CAMERA_FILE_FORMAT,
             device_ip=camera_settings["device_ip"],
             record_video=camera_settings["record_video"],
+            stop_event=stop_event,
         )
     except Exception as exc:
         print(f"Camera stopped with an error: {exc}")
@@ -248,7 +252,7 @@ def merge_audio_video(video_path, audio_path):
     output_path = Camera.RECORDINGS_DIR / f"{get_recording_stem()}.mp4"
     video_input_args = []
     if Path(video_path).suffix.lower() == ".h265":
-        video_input_args = ["-framerate", str(CAMERA_FPS)]
+        video_input_args = ["-f", "hevc", "-framerate", str(CAMERA_FPS)]
 
     command = [
         ffmpeg,
@@ -292,6 +296,17 @@ def merge_audio_video(video_path, audio_path):
     return output_path
 
 
+def watch_for_global_kill(stop_event, done_event, kill_button):
+    while not stop_event.is_set() and not done_event.is_set():
+        if msvcrt.kbhit():
+            char = msvcrt.getwch()
+            if char.lower() == kill_button.lower():
+                stop_event.set()
+                print()
+                print("Kill requested. Stopping all peripherals and processing clipped recordings.")
+                return
+
+
 def run_enabled_peripherals(peripheral_settings):
     motor_enabled = peripheral_settings["motor_enabled"]
     mic_enabled = peripheral_settings["mic_enabled"]
@@ -313,13 +328,23 @@ def run_enabled_peripherals(peripheral_settings):
             return
 
     worker_threads = []
+    stop_event = threading.Event()
+    done_event = threading.Event()
     recording_paths = {
         "audio": None,
         "video": None,
     }
 
     def run_camera_worker():
-        recording_paths["video"] = run_camera(record_time)
+        recording_paths["video"] = run_camera(record_time, stop_event)
+
+    if not motor_enabled:
+        kill_thread = threading.Thread(
+            target=watch_for_global_kill,
+            args=(stop_event, done_event, KILL_BUTTON),
+            daemon=True,
+        )
+        kill_thread.start()
 
     if motor_enabled:
         motor_settings = load_motor_settings()
@@ -332,6 +357,8 @@ def run_enabled_peripherals(peripheral_settings):
                 "on_time": motor_settings["on_time"],
                 "off_time": motor_settings["off_time"],
                 "duration_seconds": record_time,
+                "stop_event": stop_event,
+                "kill_button": KILL_BUTTON,
             },
         )
         motor_thread.start()
@@ -343,9 +370,10 @@ def run_enabled_peripherals(peripheral_settings):
         worker_threads.append(camera_thread)
 
     if mic_enabled:
-        recording_paths["audio"] = record_microphone(record_time)
+        recording_paths["audio"] = record_microphone(record_time, stop_event)
         for worker_thread in worker_threads:
             worker_thread.join()
+        done_event.set()
 
         if merge_enabled and camera_enabled:
             merge_audio_video(recording_paths["video"], recording_paths["audio"])
@@ -354,6 +382,7 @@ def run_enabled_peripherals(peripheral_settings):
 
     for worker_thread in worker_threads:
         worker_thread.join()
+    done_event.set()
 
 
 def main():

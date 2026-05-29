@@ -165,6 +165,7 @@ def run_camera(
     device_ip=None,
     record_video=True,
     window_name="OAK-D RGB",
+    stop_event=None,
 ):
     recording_stem = get_recording_stem()
     output_format = file_format.lower()
@@ -207,6 +208,9 @@ def run_camera(
                 break
 
             if duration_seconds is not None and time.monotonic() - start_time >= duration_seconds:
+                break
+
+            if stop_event is not None and stop_event.is_set():
                 break
 
     if video_writer is not None:

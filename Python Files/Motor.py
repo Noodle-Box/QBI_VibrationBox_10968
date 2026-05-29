@@ -5,6 +5,9 @@ import serial
 from serial.tools import list_ports
 
 
+KILL_BUTTON = "v"
+
+
 def add_motor_arguments(parser):
     parser.add_argument("--motor", action="store_true", help="Configure or target motor settings.")
     parser.add_argument("--set-strength", type=int, help="With --motor, save raw motor strength, 30-250.")
@@ -59,7 +62,7 @@ def send_all_settings(arduino, strength, on_time, off_time):
     return strength, on_time, off_time
 
 
-def print_menu(strength, on_time, off_time, motor_on=True, time_left=None):
+def print_menu(strength, on_time, off_time, motor_on=True, time_left=None, kill_button=KILL_BUTTON):
     print()
     if time_left is not None:
         print(f"Current time left: {max(0, int(time_left))} seconds")
@@ -71,6 +74,7 @@ def print_menu(strength, on_time, off_time, motor_on=True, time_left=None):
     print(f"s   | {strength}            | Vibration strength - strength of motor")
     print(f"n   | {on_time} ms         | Motor on time")
     print(f"m   | {off_time} ms         | Motor off time")
+    print(f"{kill_button}   | -              | Kill all peripherals and process clipped recordings")
     print("q   | -              | Quit the program early. Completely exit the motor (used for emergency)")
 
 
@@ -132,9 +136,15 @@ def handle_user_command(arduino, user_input, strength, on_time, off_time, motor_
     return strength, on_time, off_time, motor_on, False
 
 
-def read_nonblocking_command(command_buffer):
+def read_nonblocking_command(command_buffer, stop_event=None, kill_button=KILL_BUTTON):
     while msvcrt.kbhit():
         char = msvcrt.getwch()
+
+        if char.lower() == kill_button.lower() and stop_event is not None:
+            stop_event.set()
+            print()
+            print("Kill requested. Stopping all peripherals and processing clipped recordings.")
+            return "", "__kill__"
 
         if char in ("\r", "\n"):
             print()
@@ -182,18 +192,28 @@ def run_manual_motor_loop(arduino, strength, on_time, off_time):
             break
 
 
-def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds):
+def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds, stop_event=None, kill_button=KILL_BUTTON):
     motor_on = True
     command_buffer = ""
     end_time = time.monotonic() + duration_seconds
 
-    print_menu(strength, on_time, off_time, motor_on, end_time - time.monotonic())
+    print_menu(strength, on_time, off_time, motor_on, end_time - time.monotonic(), kill_button)
     print("> ", end="", flush=True)
 
+    killed = False
+
     while time.monotonic() < end_time:
-        command_buffer, command = read_nonblocking_command(command_buffer)
+        if stop_event is not None and stop_event.is_set():
+            killed = True
+            break
+
+        command_buffer, command = read_nonblocking_command(command_buffer, stop_event, kill_button)
 
         if command is not None:
+            if command == "__kill__":
+                killed = True
+                break
+
             strength, on_time, off_time, motor_on, should_quit = handle_user_command(
                 arduino,
                 command,
@@ -206,17 +226,20 @@ def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds)
             if should_quit:
                 return
 
-            print_menu(strength, on_time, off_time, motor_on, end_time - time.monotonic())
+            print_menu(strength, on_time, off_time, motor_on, end_time - time.monotonic(), kill_button)
             print("> ", end="", flush=True)
 
         time.sleep(0.05)
 
     print()
     stop_motor(arduino)
-    print("Motor record time ended. Motor stopped.")
+    if killed:
+        print("Motor stopped by kill request.")
+    else:
+        print("Motor record time ended. Motor stopped.")
 
 
-def run_motor_driver(serial_port, baud_rate, strength, on_time, off_time, duration_seconds=None):
+def run_motor_driver(serial_port, baud_rate, strength, on_time, off_time, duration_seconds=None, stop_event=None, kill_button=KILL_BUTTON):
     try:
         with serial.Serial(serial_port, baud_rate, timeout=1) as arduino:
             time.sleep(2)  # Give the Arduino time to reset after opening serial.
@@ -230,7 +253,7 @@ def run_motor_driver(serial_port, baud_rate, strength, on_time, off_time, durati
             if duration_seconds is None:
                 run_manual_motor_loop(arduino, strength, on_time, off_time)
             else:
-                run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds)
+                run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds, stop_event, kill_button)
     except serial.SerialException as exc:
         print(f"Could not open {serial_port}: {exc}")
         print()

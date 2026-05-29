@@ -260,10 +260,13 @@ def convert_wav_to_mp3(wav_path, mp3_path):
     subprocess.run(command, check=True, capture_output=True, text=True)
     return True
 
-def record_audio(device_index, duration_seconds, sample_rate, channels):
+def record_audio(device_index, duration_seconds, sample_rate, channels, stop_event=None):
     print(f"Recording {duration_seconds} seconds from device index {device_index}...")
     extra_settings = get_input_extra_settings(device_index)
     total_frames = int(duration_seconds * sample_rate)
+    chunk_frames = max(1, int(sample_rate * 0.1))
+    audio_chunks = []
+    overflowed = False
 
     with sd.InputStream(
         device=device_index,
@@ -272,12 +275,25 @@ def record_audio(device_index, duration_seconds, sample_rate, channels):
         dtype="int16",
         extra_settings=extra_settings,
     ) as stream:
-        audio, overflowed = stream.read(total_frames)
+        frames_read = 0
+
+        while frames_read < total_frames:
+            if stop_event is not None and stop_event.is_set():
+                break
+
+            frames_to_read = min(chunk_frames, total_frames - frames_read)
+            audio, chunk_overflowed = stream.read(frames_to_read)
+            audio_chunks.append(audio)
+            frames_read += len(audio)
+            overflowed = overflowed or chunk_overflowed
 
     if overflowed:
         print("Warning: audio input buffer overflowed during recording.")
 
-    return audio
+    if not audio_chunks:
+        return np.empty((0, channels), dtype=np.int16)
+
+    return np.concatenate(audio_chunks, axis=0)
 
 
 def can_record_from_settings(
@@ -335,6 +351,7 @@ def record_from_settings(
     device_override=None,
     duration_override=None,
     mp3=False,
+    stop_event=None,
 ):
     device_index = resolve_recording_device(settings, keyword, device_override)
     if device_index is None:
@@ -353,7 +370,7 @@ def record_from_settings(
     export_flac = recording_format == "flac"
 
     try:
-        audio = record_audio(device_index, duration_seconds, sample_rate, channels)
+        audio = record_audio(device_index, duration_seconds, sample_rate, channels, stop_event)
     except sd.PortAudioError as exc:
         print(f"Could not record at {sample_rate} Hz: {exc}")
         print()

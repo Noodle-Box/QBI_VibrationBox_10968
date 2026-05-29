@@ -98,4 +98,15 @@ Run enabled peripherals:
 python .\Main.py
 ```
 
+During runtime:
+
+```text
+p             toggle motor vibration on/off
+s <30-250>    set vibration strength
+n <ms>        set motor on-time
+m <ms>        set motor off-time
+v             kill all peripherals and process clipped recordings
+q             quit the motor early
+```
+
 Local hardware settings are saved into JSON files inside `Python Files`. These are ignored by git because COM ports and audio device indices are machine-specific.
