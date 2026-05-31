@@ -29,11 +29,11 @@ KILL_BUTTON = "k"               #  Press this key to stop all peripherals during
 
 
 # Speaker Macros
-SPEAKER_FREQUENCY_HZ = 500     # (Hz), Frequency of the beep sound
-SPEAKER_BEEP_DURATION = 1.0     # (s), Duration of each beep
+SPEAKER_FREQ = 300              # (Hz), Frequency of the beep sound
+SPEAKER_TIME = 1.0              # (s), Duration of each beep
 SPEAKER_INTERVAL = 2.0          # (s), Interval between beeps
 SPEAKER_SAMPLE_RATE = 44100     # (Hz), Sample rate for audio generation
-SPEAKER_AMPLITUDE = 1           # (0.0-1.0), Amplitude of the beep sound
+SPEAKER_AMPLITUDE = 1           # Amplitude of the sinusodial beep sound. Adjust knob on speaker for real-world volume 
 
 
 # Camera Macros
@@ -186,8 +186,8 @@ def print_camera_settings(record_time):
 
 def print_speaker_settings():
     print(
-        f"Frequency: {SPEAKER_FREQUENCY_HZ} Hz \n"
-        f"Beep Duration: {SPEAKER_BEEP_DURATION} s \n"
+        f"Frequency: {SPEAKER_FREQ} Hz \n"
+        f"Beep Duration: {SPEAKER_TIME} s \n"
         f"Interval: {SPEAKER_INTERVAL} s \n"
         f"Sample Rate: {SPEAKER_SAMPLE_RATE} Hz \n"
         f"Amplitude: {SPEAKER_AMPLITUDE}"
@@ -337,8 +337,8 @@ def run_speaker(record_time, stop_event=None):
         Speaker.run_speaker(
             duration_seconds=record_time,
             stop_event=stop_event,
-            frequency_hz=SPEAKER_FREQUENCY_HZ,
-            beep_duration_seconds=SPEAKER_BEEP_DURATION,
+            frequency_hz=SPEAKER_FREQ,
+            beep_duration_seconds=SPEAKER_TIME,
             interval_seconds=SPEAKER_INTERVAL,
             sample_rate=SPEAKER_SAMPLE_RATE,
             amplitude=SPEAKER_AMPLITUDE,
