@@ -254,6 +254,7 @@ def run_camera(
         print(f"Connecting to OAK camera at {device_ip}...")
 
     device_args = [device_info] if device_info else []
+    saved_video_path = None
     with dai.Pipeline(dai.Device(*device_args)) as pipeline:
         outputs = create_camera_outputs(pipeline, view, width, height, fps)
         queues = {
@@ -263,41 +264,48 @@ def run_camera(
         pipeline.start()
         start_time = time.monotonic()
 
-        while True:
-            frame = get_preview_frame(view, queues)
+        try:
+            while True:
+                frame = get_preview_frame(view, queues)
 
+                if video_writer is not None:
+                    video_writer.write(frame)
+
+                cv2.imshow(window_name, frame)
+
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord("q"):
+                    break
+
+                if duration_seconds is not None and time.monotonic() - start_time >= duration_seconds:
+                    break
+
+                if stop_event is not None and stop_event.is_set():
+                    break
+        finally:
             if video_writer is not None:
-                video_writer.write(frame)
+                video_writer.release()
+                video_writer = None
 
-            cv2.imshow(window_name, frame)
+            cv2.destroyWindow(window_name)
 
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord("q"):
-                break
+            if record_video:
+                saved_video_path = writer_path
+                if output_format == "h265":
+                    try:
+                        saved_video_path = convert_video_to_h265(writer_path, video_path)
+                    except subprocess.CalledProcessError as exc:
+                        print(f"H.265 export failed: {exc}")
+                        if exc.stderr:
+                            print(exc.stderr)
+                        saved_video_path = writer_path
 
-            if duration_seconds is not None and time.monotonic() - start_time >= duration_seconds:
-                break
+                print(f"Saved camera video: {saved_video_path}")
 
-            if stop_event is not None and stop_event.is_set():
-                break
-
-    if video_writer is not None:
-        video_writer.release()
-
-    cv2.destroyWindow(window_name)
+    cv2.destroyAllWindows()
 
     if record_video:
-        if output_format == "h265":
-            try:
-                video_path = convert_video_to_h265(writer_path, video_path)
-            except subprocess.CalledProcessError as exc:
-                print(f"H.265 export failed: {exc}")
-                if exc.stderr:
-                    print(exc.stderr)
-                video_path = writer_path
-
-        print(f"Saved camera video: {video_path}")
-        return video_path
+        return saved_video_path
 
     return None
 
