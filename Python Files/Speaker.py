@@ -1,8 +1,17 @@
-import time
+#####################################################################################################################
+# File: Speaker Driver
+# Project: Time Locked Box Simulator
+# Research Group: Suarez Lab, Queensland Brain Institute, UQ
+#
+# Author: Tevyn Vergara
+# Date: 01/06/2026
 
+############################################ Standard Library Imports ################################################
+import time
 import numpy as np
 import sounddevice as sd
 
+################################################### Functionality ####################################################
 
 def generate_tone(frequency_hz, duration_seconds, sample_rate, amplitude):
     sample_count = int(duration_seconds * sample_rate)

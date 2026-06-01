@@ -1,12 +1,26 @@
+#######################################################################################################################
+# File: Motor Driver
+# Project: Time Locked Box Simulator
+# Research Group: Suarez Lab, Queensland Brain Institute, UQ
+#
+# Author: Tevyn Vergara
+# Date: 01/06/2026
+
+
+# Note: This file takes the serial commands from Main.py and sends them to Arduino controller in Arduino Files\Motor Driver - Vibration Box\src\main.cpp
+# To modify arduino drive in VSCode, please install PlatformIO extension
+#
+# STRUCTURE: Main.py --> Motor.py --> Main.cpp
+
+############################################ Standard Library Imports ################################################
 import msvcrt
 import time
-
 import serial
 from serial.tools import list_ports
 
+################################################### Functionality ####################################################
 
 KILL_BUTTON = "v"
-
 
 def add_motor_arguments(parser):
     parser.add_argument("--motor", action="store_true", help="Configure or target motor settings.")

@@ -1,3 +1,12 @@
+#######################################################################################################################
+# File: Microphone Driver
+# Project: Time Locked Box Simulator
+# Research Group: Suarez Lab, Queensland Brain Institute, UQ
+#
+# Author: Tevyn Vergara
+# Date: 01/06/2026
+
+############################################ Standard Library Imports ################################################
 import argparse
 import json
 import shutil
@@ -9,19 +18,14 @@ from pathlib import Path
 import numpy as np
 import sounddevice as sd
 
-
+################################################### Functionality ####################################################
 RESOLUTION = 16
 RECORDINGS_DIR = Path(__file__).resolve().parent / "recordings"
 SETTINGS_PATH = Path(__file__).resolve().parent / "microphone_settings.json"
 DEFAULT_KEYWORD = "Pettersson"
 
-# Standalone Microphone.py Macros (Change if needed)
-DEFAULT_SAMPLE_RATE = 44100            # Use 44100 for standard pitch, 384000 for ultrasonic
-DEFAULT_CHANNELS = 1
-DEFAULT_FILE_FORMAT = "FLAC"
-DEFAULT_TIME = 5.0
-DEFAULT_RECORD = True
 
+DEFAULT_FILE_FORMAT = "FLAC"
 FORMAT_WAV = "wav"
 FORMAT_MP3 = "mp3"
 FORMAT_FLAC = "flac"

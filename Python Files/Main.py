@@ -1,4 +1,13 @@
-# Standard import libraries
+#######################################################################################################################
+# File: Main Controller
+# Project: Time Locked Box Simulator
+# Research Group: Suarez Lab, Queensland Brain Institute, UQ
+#
+# Author: Tevyn Vergara
+# Date: 01/06/2026
+
+############################################ Standard Library Imports ################################################
+
 import argparse
 import json
 import multiprocessing
@@ -17,7 +26,7 @@ import Microphone
 import Motor
 import Speaker
 
-###################################### CHANGE THESE AS NEEDED #################################################
+####################################### Peripheral Settings: CHANGE THESE AS NEEDED #########################################
 
 # Recording paths (Change for where you want to autosave the recordings)
 CUSTOM_RECORDINGS_DIR = None    # Example: r"C:\Users\YourName\Documents\VibrationBoxRecordings". Use None for repo-local recordings.
@@ -27,8 +36,8 @@ RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Recording Macros
 DEFAULT_RECORD_TIME = 20.0      # (s), Recording duration
-DEFAULT_MERGE_AV = True        # True exports a merged MP4 when mic and camera are enabled.
-KILL_BUTTON = "k"               #  Press this key to stop all peripherals during recording.
+DEFAULT_MERGE_AV = True         # True exports a merged MP4 when mic and camera are enabled.
+KILL_BUTTON = "k"               # Press this key to stop all peripherals during recording.
 
 
 # Speaker Macros
@@ -48,7 +57,7 @@ CAMERA_FILE_FORMAT = "H265"     # File format for the recorded video
 
 
 # Microphone Macros
-MIC_DEVICE = 18                 # Set after --list-devices. Example: 15. Use None for auto-select.
+MIC_DEVICE = 19                 # Set after --list-devices. Example: 15. Use None for auto-select.
 MIC_SAMPLE_RATE = 384000        # (Hz), Sample rate in Hz.
 MIC_CHANNELS = 1                # (int), Mono recording. Set to 2 for stereo if microphone supports it.
 MIC_FORMAT = "WAV"             # File format for the recorded audio. Common options: "WAV", "FLAC", "MP3"
@@ -61,8 +70,7 @@ MOTOR_STRENGTH = 150            # Raw PWM strength, 30-250.
 MOTOR_ON_TIME = 200             # (ms), Motor ON time
 MOTOR_OFF_TIME = 300            # (ms), Motor OFF time
 
-###################################################################################################################
-
+############################################# Helper Functions ####################################################
 Camera.RECORDINGS_DIR = RECORDINGS_DIR
 Microphone.RECORDINGS_DIR = RECORDINGS_DIR
 
@@ -591,7 +599,7 @@ def run_enabled_peripherals(peripheral_settings):
     if camera_enabled and recording_paths["video"] is None:
         recording_paths["video"] = recover_camera_recording(run_started_at)
 
-
+###################################################### Main Function ###########################################################
 def main():
     parser = argparse.ArgumentParser(description="Control motor, microphone, and camera peripherals.")
     Motor.add_motor_arguments(parser)

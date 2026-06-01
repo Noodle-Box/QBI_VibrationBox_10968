@@ -1,3 +1,12 @@
+#######################################################################################################################
+# File: Camera Driver
+# Project: Time Locked Box Simulator
+# Research Group: Suarez Lab, Queensland Brain Institute, UQ
+#
+# Author: Tevyn Vergara
+# Date: 01/06/2026
+
+############################################ Standard Library Imports ################################################
 import json
 import shutil
 import subprocess
@@ -8,6 +17,7 @@ from pathlib import Path
 import cv2
 import depthai as dai
 
+################################################### Functionality ####################################################
 
 SETTINGS_PATH = Path(__file__).resolve().parent / "camera_settings.json"
 RECORDINGS_DIR = Path(__file__).resolve().parent / "recordings"
