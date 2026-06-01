@@ -1,3 +1,4 @@
+# Standard import libraries
 import argparse
 import json
 import multiprocessing
@@ -10,7 +11,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-# Local functionality drivers (You shouldn't have to change these)
+# Local python funcitonality drivers (do not touch)
 import Camera
 import Microphone
 import Motor
@@ -24,36 +25,40 @@ RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # Recording Macros
-DEFAULT_RECORD_TIME = 60.0      # (s), Recording duration
+DEFAULT_RECORD_TIME = 20.0      # (s), Recording duration
+DEFAULT_MERGE_AV = True        # True exports a merged MP4 when mic and camera are enabled.
 KILL_BUTTON = "k"               #  Press this key to stop all peripherals during recording.
 
 
 # Speaker Macros
-SPEAKER_FREQ = 300              # (Hz), Frequency of the beep sound
-SPEAKER_TIME = 1.0              # (s), Duration of each beep
-SPEAKER_INTERVAL = 2.0          # (s), Interval between beeps
+SPEAKER_FREQ = 300              # (Hz), Beep Freq
+SPEAKER_TIME = 1.0              # (s), Speaker ON time
+SPEAKER_INTERVAL = 2.0          # (s), Speaker OFF time
 SPEAKER_SAMPLE_RATE = 44100     # (Hz), Sample rate for audio generation
 SPEAKER_AMPLITUDE = 1           # Amplitude of the sinusodial beep sound. Adjust knob on speaker for real-world volume 
 
 
 # Camera Macros
+CAMERA_IP = "169.254.1.222"     # Set after --list-cameras. Example: "169.254.1.222". Use None for auto-discover.
 CAMERA_WIDTH = 1280             # (pixels), Width of the camera image
 CAMERA_HEIGHT = 720             # (pixels), Height of the camera image
 CAMERA_FPS = 30                 # (fp/s), Frames per second for the camera
 CAMERA_FILE_FORMAT = "H265"     # File format for the recorded video
 
+
 # Microphone Macros
-MICROPHONE_SAMPLE_RATE = 384000 # (Hz), Sample rate in Hz.
-MICROPHONE_CHANNELS = 1         # (int), Mono recording. Set to 2 for stereo if microphone supports it.
-MICROPHONE_FILE_FORMAT = "FLAC"
+MIC_DEVICE = 18                 # Set after --list-devices. Example: 15. Use None for auto-select.
+MIC_SAMPLE_RATE = 384000        # (Hz), Sample rate in Hz.
+MIC_CHANNELS = 1                # (int), Mono recording. Set to 2 for stereo if microphone supports it.
+MIC_FORMAT = "WAV"             # File format for the recorded audio. Common options: "WAV", "FLAC", "MP3"
 
 
 # Motor Macros
-MOTOR_SERIAL_PORT = "COM6"
-MOTOR_BAUD_RATE = 9600
-MOTOR_STRENGTH = 150            # (int), Raw PWM strength, 30-250.
-MOTOR_ON_TIME = 200             # (ms), Milliseconds.
-MOTOR_OFF_TIME = 500            # (ms), Milliseconds.
+MOTOR_SERIAL_PORT = "COM6"      # Serial port for motor driver. Change in "DEVICE MANAGER"
+MOTOR_BAUD_RATE = 9600          # Baud rate for motor driver communication. DO NOT TOUCH
+MOTOR_STRENGTH = 150            # Raw PWM strength, 30-250.
+MOTOR_ON_TIME = 200             # (ms), Motor ON time
+MOTOR_OFF_TIME = 300            # (ms), Motor OFF time
 
 ###################################################################################################################
 
@@ -70,8 +75,8 @@ def default_peripheral_settings():
         "mic_enabled": True,
         "camera_enabled": False,
         "speaker_enabled": False,
-        "record_time": None,
-        "merge_av_enabled": False,
+        "record_time": DEFAULT_RECORD_TIME,
+        "merge_av_enabled": DEFAULT_MERGE_AV,
     }
 
 
@@ -125,6 +130,44 @@ def set_motor_setting(settings, key, value):
     return True
 
 
+def save_live_motor_settings(strength, on_time, off_time):
+    settings = load_motor_settings()
+    settings["strength"] = strength
+    settings["on_time"] = on_time
+    settings["off_time"] = off_time
+    save_motor_settings(settings)
+
+
+def save_default_microphone_settings():
+    settings = Microphone.default_settings()
+    settings["device_index"] = MIC_DEVICE
+    settings["file_format"] = MIC_FORMAT.lower()
+    Microphone.save_settings(settings)
+    return settings
+
+
+def save_default_camera_settings():
+    settings = Camera.default_settings()
+    settings["device_ip"] = CAMERA_IP
+    Camera.save_settings(settings)
+    return settings
+
+
+def save_default_project_settings(enable_all=False):
+    peripheral_settings = default_peripheral_settings()
+    if enable_all:
+        peripheral_settings["motor_enabled"] = True
+        peripheral_settings["mic_enabled"] = True
+        peripheral_settings["camera_enabled"] = True
+        peripheral_settings["speaker_enabled"] = True
+
+    save_peripheral_settings(peripheral_settings)
+    save_motor_settings(default_motor_settings())
+    save_default_microphone_settings()
+    save_default_camera_settings()
+    return peripheral_settings
+
+
 def on_off_label(enabled):
     return "On" if enabled else "Off"
 
@@ -155,9 +198,9 @@ def print_microphone_settings(record_time):
     mic_settings = Microphone.load_settings()
     Microphone.print_recording_info(
         mic_settings,
-        sample_rate=MICROPHONE_SAMPLE_RATE,
-        channels=MICROPHONE_CHANNELS,
-        file_format=Microphone.get_recording_format(mic_settings, MICROPHONE_FILE_FORMAT),
+        sample_rate=MIC_SAMPLE_RATE,
+        channels=MIC_CHANNELS,
+        file_format=Microphone.get_recording_format(mic_settings, MIC_FORMAT),
         default_duration=record_time,
     )
 
@@ -284,10 +327,10 @@ def record_microphone(record_time, stop_event=None):
     mic_settings = Microphone.load_settings()
     return Microphone.record_from_settings(
         mic_settings,
-        sample_rate=MICROPHONE_SAMPLE_RATE,
-        channels=MICROPHONE_CHANNELS,
+        sample_rate=MIC_SAMPLE_RATE,
+        channels=MIC_CHANNELS,
         duration_seconds=record_time,
-        file_format=Microphone.get_recording_format(mic_settings, MICROPHONE_FILE_FORMAT),
+        file_format=Microphone.get_recording_format(mic_settings, MIC_FORMAT),
         duration_override=record_time,
         stop_event=stop_event,
     )
@@ -463,8 +506,8 @@ def run_enabled_peripherals(peripheral_settings):
     if mic_enabled:
         mic_ready = Microphone.can_record_from_settings(
             Microphone.load_settings(),
-            sample_rate=MICROPHONE_SAMPLE_RATE,
-            channels=MICROPHONE_CHANNELS,
+            sample_rate=MIC_SAMPLE_RATE,
+            channels=MIC_CHANNELS,
         )
         if not mic_ready:
             return
@@ -501,6 +544,7 @@ def run_enabled_peripherals(peripheral_settings):
                 "duration_seconds": record_time,
                 "stop_event": stop_event,
                 "kill_button": KILL_BUTTON,
+                "settings_callback": save_live_motor_settings,
             },
         )
         motor_thread.start()
@@ -566,9 +610,9 @@ def main():
     if args.list_devices:
         Microphone.handle_microphone_args(
             args,
-            sample_rate = MICROPHONE_SAMPLE_RATE,
-            channels = MICROPHONE_CHANNELS,
-            file_format = MICROPHONE_FILE_FORMAT,
+            sample_rate = MIC_SAMPLE_RATE,
+            channels = MIC_CHANNELS,
+            file_format = MIC_FORMAT,
             duration_seconds = get_record_time(peripheral_settings),
         )
         return
@@ -598,10 +642,14 @@ def main():
     record_time_changed = False
     if args.set_all is not None:
         enabled = args.set_all == "on"
-        peripheral_settings["motor_enabled"] = enabled
-        peripheral_settings["mic_enabled"] = enabled
-        peripheral_settings["camera_enabled"] = enabled
-        peripheral_settings["speaker_enabled"] = enabled
+        if enabled:
+            peripheral_settings = save_default_project_settings(enable_all=True)
+            motor_settings = load_motor_settings()
+        else:
+            peripheral_settings["motor_enabled"] = False
+            peripheral_settings["mic_enabled"] = False
+            peripheral_settings["camera_enabled"] = False
+            peripheral_settings["speaker_enabled"] = False
         peripheral_settings_changed = True
 
     if args.set_motor is not None:
@@ -709,9 +757,9 @@ def main():
     if args.record_mic or args.device is not None or args.duration is not None or args.mp3:
         Microphone.handle_microphone_args(
             args,
-            sample_rate = MICROPHONE_SAMPLE_RATE,
-            channels = MICROPHONE_CHANNELS,
-            file_format = MICROPHONE_FILE_FORMAT,
+            sample_rate = MIC_SAMPLE_RATE,
+            channels = MIC_CHANNELS,
+            file_format = MIC_FORMAT,
             duration_seconds = get_record_time(peripheral_settings),
         )
         return

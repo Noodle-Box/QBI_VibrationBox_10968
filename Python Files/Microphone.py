@@ -22,6 +22,11 @@ DEFAULT_FILE_FORMAT = "FLAC"
 DEFAULT_TIME = 5.0
 DEFAULT_RECORD = True
 
+FORMAT_WAV = "wav"
+FORMAT_MP3 = "mp3"
+FORMAT_FLAC = "flac"
+SUPPORTED_FILE_FORMATS = (FORMAT_WAV, FORMAT_MP3, FORMAT_FLAC)
+
 
 def default_settings():
     return {
@@ -153,7 +158,7 @@ def normalize_file_format(file_format):
 
 def get_recording_format(settings, default_file_format=DEFAULT_FILE_FORMAT):
     file_format = normalize_file_format(settings.get("file_format", default_file_format))
-    if file_format not in ("wav", "mp3", "flac"):
+    if file_format not in SUPPORTED_FILE_FORMATS:
         return normalize_file_format(default_file_format)
 
     return file_format
@@ -161,7 +166,7 @@ def get_recording_format(settings, default_file_format=DEFAULT_FILE_FORMAT):
 
 def set_recording_format(settings, file_format):
     file_format = normalize_file_format(file_format)
-    if file_format not in ("wav", "mp3", "flac"):
+    if file_format not in SUPPORTED_FILE_FORMATS:
         print("Microphone format must be wav, mp3, or flac.")
         return False
 
@@ -259,6 +264,47 @@ def convert_wav_to_mp3(wav_path, mp3_path):
     ]
     subprocess.run(command, check=True, capture_output=True, text=True)
     return True
+
+
+def save_wav_recording(wav_path):
+    print(f"Saved WAV: {wav_path}")
+    return wav_path
+
+
+def save_mp3_recording(wav_path, mp3_path):
+    mp3_created = convert_wav_to_mp3(wav_path, mp3_path)
+    if not mp3_created:
+        return wav_path
+
+    print(f"Saved MP3 preview: {mp3_path}")
+    print("Note: MP3 is downsampled to 48 kHz and will not preserve ultrasonic content.")
+    return mp3_path
+
+
+def save_flac_recording(wav_path, flac_path):
+    flac_created = convert_wav_to_flac(wav_path, flac_path)
+    if not flac_created:
+        return wav_path
+
+    print(f"Saved FLAC: {flac_path}")
+    wav_path.unlink(missing_ok=True)
+    return flac_path
+
+
+def save_recording_by_format(wav_path, recording_format):
+    recording_format = normalize_file_format(recording_format)
+
+    if recording_format == FORMAT_WAV:
+        return save_wav_recording(wav_path)
+
+    if recording_format == FORMAT_MP3:
+        return save_mp3_recording(wav_path, wav_path.with_suffix(".mp3"))
+
+    if recording_format == FORMAT_FLAC:
+        return save_flac_recording(wav_path, wav_path.with_suffix(".flac"))
+
+    raise ValueError(f"Unsupported microphone file format: {recording_format}")
+
 
 def record_audio(device_index, duration_seconds, sample_rate, channels, stop_event=None):
     print(f"Recording {duration_seconds} seconds from device index {device_index}...")
@@ -363,11 +409,9 @@ def record_from_settings(
     duration_seconds = duration_override if duration_override is not None else duration_seconds
     recording_stem = get_recording_stem()
     wav_path = RECORDINGS_DIR / f"{recording_stem}.wav"
-    flac_path = RECORDINGS_DIR / f"{recording_stem}.flac"
-    mp3_path = RECORDINGS_DIR / f"{recording_stem}.mp3"
     recording_format = get_recording_format(settings, file_format)
-    export_mp3 = mp3 or recording_format == "mp3"
-    export_flac = recording_format == "flac"
+    if mp3:
+        recording_format = FORMAT_MP3
 
     try:
         audio = record_audio(device_index, duration_seconds, sample_rate, channels, stop_event)
@@ -378,38 +422,13 @@ def record_from_settings(
         return None
 
     write_wav(wav_path, audio, sample_rate, channels)
-    if not export_flac:
-        print(f"Saved WAV: {wav_path}")
-
-    if export_flac:
-        try:
-            flac_created = convert_wav_to_flac(wav_path, flac_path)
-        except subprocess.CalledProcessError as exc:
-            print(f"FLAC export failed: {exc}")
-            if exc.stderr:
-                print(exc.stderr)
-            return wav_path
-
-        if flac_created:
-            print(f"Saved FLAC: {flac_path}")
-            wav_path.unlink(missing_ok=True)
-            return flac_path
-
-    if export_mp3:
-        try:
-            mp3_created = convert_wav_to_mp3(wav_path, mp3_path)
-        except subprocess.CalledProcessError as exc:
-            print(f"MP3 export failed: {exc}")
-            if exc.stderr:
-                print(exc.stderr)
-            return wav_path
-
-        if mp3_created:
-            print(f"Saved MP3 preview: {mp3_path}")
-            print("Note: MP3 is downsampled to 48 kHz and will not preserve ultrasonic content.")
-            return mp3_path
-
-    return wav_path
+    try:
+        return save_recording_by_format(wav_path, recording_format)
+    except subprocess.CalledProcessError as exc:
+        print(f"{recording_format.upper()} export failed: {exc}")
+        if exc.stderr:
+            print(exc.stderr)
+        return wav_path
 
 
 def add_microphone_arguments(parser):
