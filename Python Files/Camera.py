@@ -16,13 +16,13 @@ from pathlib import Path
 
 import cv2
 import depthai as dai
-
 ################################################### Functionality ####################################################
 
 SETTINGS_PATH = Path(__file__).resolve().parent / "camera_settings.json"
 RECORDINGS_DIR = Path(__file__).resolve().parent / "recordings"
 
 
+# Returns default camera JSON settings. Used by load_settings() and Main.py --set-all on.
 def default_settings():
     return {
         "device_ip": None,
@@ -31,6 +31,7 @@ def default_settings():
     }
 
 
+# Loads camera_settings.json and fills missing keys. Used by Main.py before printing info or running camera.
 def load_settings():
     if not SETTINGS_PATH.exists():
         settings = default_settings()
@@ -48,15 +49,18 @@ def load_settings():
     return defaults
 
 
+# Writes the camera_settings.json. Used in camera config and Main.py to store and hold user defined parameters.
 def save_settings(settings):
     with SETTINGS_PATH.open("w", encoding="utf-8") as settings_file:
         json.dump(settings, settings_file, indent=2)
 
 
+# Builds the timestamp stem for camera output files
 def get_recording_stem():
     return datetime.now().strftime("Recording_%H%M%S_%d_%m")
 
 
+# Enables or disables camera video recording in JSON.
 def set_record_video(settings, enabled):
     settings["record_video"] = enabled
     save_settings(settings)
@@ -64,6 +68,7 @@ def set_record_video(settings, enabled):
     return True
 
 
+# Saves the OAK camera IP in JSON format
 def set_device_ip(settings, device_ip):
     settings["device_ip"] = device_ip.strip() if device_ip else None
     save_settings(settings)
@@ -71,6 +76,7 @@ def set_device_ip(settings, device_ip):
     return True
 
 
+# Saves the selected camera view in JSON
 def set_camera_view(settings, view):
     settings["view"] = view
     save_settings(settings)
@@ -78,11 +84,13 @@ def set_camera_view(settings, view):
     return True
 
 
+# Gets a stable display label for a DepthAI device --> list_cameras().
 def get_device_label(device_info):
     device_id = device_info.getDeviceId()
     return device_id or device_info.name
 
 
+# Lists available OAK cameras in the terminal --> list-cameras()
 def list_cameras():
     devices = []
     seen_labels = set()
@@ -115,6 +123,7 @@ def list_cameras():
         )
 
 
+# Sets the center RGB camera output stream
 def create_rgb_output(pipeline, width, height, fps):
     color_camera = pipeline.create(dai.node.Camera).build(dai.CameraBoardSocket.CAM_A)
     output_capability = dai.ImgFrameCapability()
@@ -123,6 +132,7 @@ def create_rgb_output(pipeline, width, height, fps):
     return color_camera.requestOutput(output_capability, True)
 
 
+# Creates a mono camera output stream for left or right sockets
 def create_mono_output(pipeline, socket, width, height, fps):
     mono_camera = pipeline.create(dai.node.Camera).build(socket)
     output_capability = dai.ImgFrameCapability()
@@ -131,6 +141,7 @@ def create_mono_output(pipeline, socket, width, height, fps):
     return mono_camera.requestOutput(output_capability, True)
 
 
+# Builds the DepthAI output stream map for center, left, right, or stereo view
 def create_camera_outputs(pipeline, view, width, height, fps):
     if view == "center":
         return {
@@ -156,6 +167,7 @@ def create_camera_outputs(pipeline, view, width, height, fps):
     raise ValueError(f"Unknown camera view: {view}")
 
 
+# Converts grayscale mono frames to BGR for display/writing. OpenCV stuff
 def ensure_bgr(frame):
     if len(frame.shape) == 2:
         return cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
@@ -163,6 +175,7 @@ def ensure_bgr(frame):
     return frame
 
 
+# Reads the next frame for the selected view
 def get_preview_frame(view, queues):
     if view == "stereo":
         left = ensure_bgr(queues["left"].get().getCvFrame())
@@ -173,6 +186,7 @@ def get_preview_frame(view, queues):
     return ensure_bgr(queue.get().getCvFrame())
 
 
+# Opens an OpenCV video writer with fallback to MP4
 def create_video_writer(path, fps, width, height):
     path.parent.mkdir(parents=True, exist_ok=True)
     codec_by_format = {
@@ -200,6 +214,7 @@ def create_video_writer(path, fps, width, height):
     raise RuntimeError("Could not open an OpenCV video writer for AVI or MP4.")
 
 
+# Converts the temporary OpenCV capture file to raw H.265
 def convert_video_to_h265(input_path, output_path):
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
@@ -229,18 +244,8 @@ def convert_video_to_h265(input_path, output_path):
     return output_path
 
 
-def run_camera(
-    width,
-    height,
-    fps,
-    duration_seconds,
-    file_format,
-    device_ip,
-    record_video,
-    view,
-    window_name,
-    stop_event,
-):
+# Runs live preview and optional recording for the configured OAK camera
+def run_camera(width, height, fps, duration_seconds, file_format, device_ip, record_video, view, window_name, stop_event):
     recording_stem = get_recording_stem()
     output_format = file_format.lower()
     video_path = RECORDINGS_DIR / f"{recording_stem}.{output_format}"
@@ -323,6 +328,7 @@ def run_camera(
     return None
 
 
+# Prints camera settings to terminal --> --info
 def print_camera_info(settings, width, height, fps, default_duration, file_format):
     duration_seconds = default_duration
 
@@ -338,6 +344,7 @@ def print_camera_info(settings, width, height, fps, default_duration, file_forma
     )
 
 
+# Registers camera-related CLI arguments, used in Main.py for argument parsing
 def add_camera_arguments(parser):
     parser.add_argument("--camera", action="store_true", help="Configure or target camera settings.")
     parser.add_argument("--list-cameras", action="store_true", help="List available OAK cameras.")
@@ -351,6 +358,7 @@ def add_camera_arguments(parser):
     )
 
 
+# Handles camera CLI actions without starting a recording run
 def handle_camera_args(args, width, height, fps, default_duration, file_format):
     settings = load_settings()
 
