@@ -19,6 +19,7 @@ from serial.tools import list_ports
 
 ################################################### Functionality ####################################################
 
+# Motor arguments for setting user parameters
 def add_motor_arguments(parser):
     parser.add_argument("--motor", action="store_true", help="Configure or target motor settings.")
     parser.add_argument("--set-strength", type=int, help="With --motor, save raw motor strength, 30-250.")
@@ -33,10 +34,12 @@ def add_motor_arguments(parser):
     parser.add_argument("--motor-off-time", type=int, help="Save motor off-time in milliseconds.")
 
 
+# Restricts a numeric value to a minimum and maximum
 def clamp(value, minimum, maximum):
     return max(minimum, min(maximum, int(value)))
 
 
+# Sends one serial command to the Arduino motor firmware
 def send_command(arduino, command_type, value):
     message = f"{command_type}:{value}\n"
     arduino.write(message.encode("utf-8"))
@@ -44,28 +47,33 @@ def send_command(arduino, command_type, value):
     print(f"Sent {message.strip()}")
 
 
+# Sets raw motor vibration strength over serial
 def set_strength(arduino, value):
     strength = clamp(value, 30, 250)
     send_command(arduino, "s", strength)
     return strength
 
 
+# Stops vibration by sending strength zero if needed
 def stop_motor(arduino):
     send_command(arduino, "s", 0)
 
 
+# Sets motor on-time over serial
 def set_on_time(arduino, value):
     on_time = max(0, int(value))
     send_command(arduino, "n", on_time)
     return on_time
 
 
+# Sets motor off-time over serial
 def set_off_time(arduino, value):
     off_time = max(0, int(value))
     send_command(arduino, "m", off_time)
     return off_time
 
 
+# Sends strength, on-time, and off-time together in one go
 def send_all_settings(arduino, strength, on_time, off_time):
     strength = set_strength(arduino, strength)
     on_time = set_on_time(arduino, on_time)
@@ -73,11 +81,13 @@ def send_all_settings(arduino, strength, on_time, off_time):
     return strength, on_time, off_time
 
 
+# Persists live motor setting changes through a callback
 def save_current_settings(settings_callback, strength, on_time, off_time):
     if settings_callback is not None:
         settings_callback(strength, on_time, off_time)
 
 
+# Prints the live motor command menu; used by manual and timed motor loops.
 def print_menu(strength, on_time, off_time, kill_button, motor_on=True, time_left=None):
     print()
     if time_left is not None:
@@ -86,21 +96,26 @@ def print_menu(strength, on_time, off_time, kill_button, motor_on=True, time_lef
 
     print("CMD | Current Setting | Description")
     print()
-    print(f"p   | {'on' if motor_on else 'off'}             | Toggle ON/OFF vibrations without quitting run time")
-    print(f"s   | {strength}            | Vibration strength - strength of motor")
-    print(f"n   | {on_time} ms         | Motor on time")
-    print(f"m   | {off_time} ms         | Motor off time")
-    print(f"{kill_button}   | -              | Kill all peripherals and process clipped recordings")
+    print(f"p               | {'on' if motor_on else 'off'} | Toggle ON/OFF vibrations without quitting run time")
+    print(f"s               | {strength}                    | Vibration strength - strength of motor")
+    print(f"n               | {on_time} ms                  | Motor on time")
+    print(f"m               | {off_time} ms                 | Motor off time")
+    print(f"{kill_button}   |                -              | Kill all peripherals and process clipped recordings")
 
 
+# Parses one typed motor command and applies it over serial; used by manual and timed motor loops.
 def handle_user_command(arduino, user_input, strength, on_time, off_time, motor_on=True, settings_callback=None):
+
+    # Split the terminal input into command and optional value.
     parts = user_input.strip().split()
     if not parts:
         return strength, on_time, off_time, motor_on
 
+    # Read the command letter and route commands that do not need a value.
     command = parts[0].lower()
 
     if command == "p":
+        # Toggle vibration without ending the timed recording run.
         motor_on = not motor_on
         if motor_on:
             set_strength(arduino, strength)
@@ -112,6 +127,7 @@ def handle_user_command(arduino, user_input, strength, on_time, off_time, motor_
         return strength, on_time, off_time, motor_on
 
     if command == "all":
+        # Re-send all motor settings and enable latest values.
         if motor_on:
             strength, on_time, off_time = send_all_settings(arduino, strength, on_time, off_time)
         else:
@@ -121,16 +137,19 @@ def handle_user_command(arduino, user_input, strength, on_time, off_time, motor_
         save_current_settings(settings_callback, strength, on_time, off_time)
         return strength, on_time, off_time, motor_on
 
+    # Correct user for incorrect command formats
     if len(parts) != 2:
         print("Use commands like: p, s 150, n 200, or m 500")
         return strength, on_time, off_time, motor_on
 
+    # Convert the command value into an integer before sending it to Arduino
     try:
         value = int(parts[1])
     except ValueError:
         print("Value must be a whole number.")
         return strength, on_time, off_time, motor_on
 
+    # Apply the value to the requested motor setting and save it for --info.
     if command == "s":
         strength = clamp(value, 30, 250)
         if motor_on:
@@ -150,32 +169,41 @@ def handle_user_command(arduino, user_input, strength, on_time, off_time, motor_
     return strength, on_time, off_time, motor_on
 
 
+# Reads typed terminal input without blocking the timed run
 def read_nonblocking_command(command_buffer, stop_event, kill_button):
     while msvcrt.kbhit():
+
+        # Read one available keypress without waiting for the user to press Enter.
         char = msvcrt.getwch()
 
+        # Trigger the shared kill event immediately when kill key is pressed.
         if char.lower() == kill_button.lower() and stop_event is not None:
             stop_event.set()
             print()
             print("Kill requested. Stopping all peripherals and processing clipped recordings.")
             return "", "__kill__"
 
+        # Submit the buffered command when the user presses Enter.
         if char in ("\r", "\n"):
             print()
             return "", command_buffer.strip()
 
+        # Support backspace editing for partially typed commands.
         if char == "\b":
             if command_buffer:
                 command_buffer = command_buffer[:-1]
                 print("\b \b", end="", flush=True)
             continue
 
+        # Add normal typed characters to the pending command buffer.
         command_buffer += char
         print(char, end="", flush=True)
 
+    # Return the current buffer and no command when no complete input is ready.
     return command_buffer, None
 
 
+# Prints detected serial ports, used when opening the configured Arduino COM port fails.
 def print_available_serial_ports():
     print("Available serial ports:")
 
@@ -187,6 +215,7 @@ def print_available_serial_ports():
             print(f"  {port.device}: {port.description}")
 
 
+# Runs the motor in interactive-only mode, used by run_motor_driver() when no duration is provided.
 def run_manual_motor_loop(arduino, strength, on_time, off_time, kill_button, settings_callback=None):
     motor_on = True
 
@@ -204,43 +233,43 @@ def run_manual_motor_loop(arduino, strength, on_time, off_time, kill_button, set
         )
 
 
+# Runs the motor with live terminal commands for set duration
 def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds, stop_event, kill_button, settings_callback=None):
+
+    # Initialize loop state and calculate the fixed end time.
     motor_on = True
     command_buffer = ""
     end_time = time.monotonic() + duration_seconds
 
+    # Show the initial live controls before entering the timed loop
     print_menu(strength, on_time, off_time, kill_button, motor_on, end_time - time.monotonic())
     print("> ", end="", flush=True)
 
     killed = False
 
+    # Keep running until the timer expires or another peripheral requests shutdown
     while time.monotonic() < end_time:
         if stop_event is not None and stop_event.is_set():
             killed = True
             break
 
+        # Poll terminal input without pausing motor timing
         command_buffer, command = read_nonblocking_command(command_buffer, stop_event, kill_button)
 
         if command is not None:
+            # Stop the motor loop early if the global kill key was pressed
             if command == "__kill__":
                 killed = True
                 break
 
-            strength, on_time, off_time, motor_on = handle_user_command(
-                arduino,
-                command,
-                strength,
-                on_time,
-                off_time,
-                motor_on,
-                settings_callback,
-            )
-
+            # Apply the completed user command and refresh the terminal menu with updated settings and remaining time
+            strength, on_time, off_time, motor_on = handle_user_command(arduino, command, strength, on_time, off_time, motor_on, settings_callback)
             print_menu(strength, on_time, off_time, kill_button, motor_on, end_time - time.monotonic())
             print("> ", end="", flush=True)
 
         time.sleep(0.05)
 
+    # Always stop motor output when the timed loop exits
     print()
     stop_motor(arduino)
     if killed:
@@ -249,16 +278,13 @@ def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds,
         print("Motor record time ended. Motor stopped.")
 
 
+# Main Motor Driver function
 def run_motor_driver(serial_port, baud_rate, strength, on_time, off_time, kill_button, duration_seconds=None, stop_event=None, settings_callback=None):
     try:
+        # Attempt to open configured serial port and send initial settings
         with serial.Serial(serial_port, baud_rate, timeout=1) as arduino:
             time.sleep(2)  # Give the Arduino time to reset after opening serial.
-            strength, on_time, off_time = send_all_settings(
-                arduino,
-                strength,
-                on_time,
-                off_time,
-            )
+            strength, on_time, off_time = send_all_settings(arduino, strength, on_time, off_time)
 
             if duration_seconds is None:
                 run_manual_motor_loop(arduino, strength, on_time, off_time, kill_button, settings_callback)

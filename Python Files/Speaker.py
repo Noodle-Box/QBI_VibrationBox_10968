@@ -13,6 +13,7 @@ import sounddevice as sd
 
 ################################################### Functionality ####################################################
 
+# Generates a sine-wave beap shape with parameters defined in main.py
 def generate_tone(frequency_hz, duration_seconds, sample_rate, amplitude):
     sample_count = int(duration_seconds * sample_rate)
     time_values = np.arange(sample_count) / sample_rate
@@ -20,6 +21,7 @@ def generate_tone(frequency_hz, duration_seconds, sample_rate, amplitude):
     return (amplitude * tone).astype(np.float32)
 
 
+# Plays a generated tone through the default audio output; used by run_speaker() for each beep.
 def play_tone(tone, sample_rate, stop_event=None):
     chunk_size = max(1, int(sample_rate * 0.05))
 
@@ -31,6 +33,7 @@ def play_tone(tone, sample_rate, stop_event=None):
             stream.write(tone[start_index:start_index + chunk_size].reshape(-1, 1))
 
 
+# Waits between beeps while watching for the shared stop signal; used by run_speaker().
 def wait_until_next_beep(interval_seconds, beep_started_at, stop_event=None):
     next_beep_at = beep_started_at + interval_seconds
 
@@ -41,6 +44,7 @@ def wait_until_next_beep(interval_seconds, beep_started_at, stop_event=None):
         time.sleep(0.05)
 
 
+# Main Speaker Function
 def run_speaker(duration_seconds, stop_event, frequency_hz, beep_duration_seconds, interval_seconds, sample_rate, amplitude):
 
     tone = generate_tone(frequency_hz, beep_duration_seconds, sample_rate, amplitude)
@@ -48,6 +52,7 @@ def run_speaker(duration_seconds, stop_event, frequency_hz, beep_duration_second
 
     print(f"Speaker beep enabled: {frequency_hz} Hz for {beep_duration_seconds} second every {interval_seconds} seconds.")
 
+    # Loop to play beeps at defined intervals until end of duration or kill signal
     while end_time is None or time.monotonic() < end_time:
         if stop_event is not None and stop_event.is_set():
             break

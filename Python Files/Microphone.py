@@ -32,6 +32,7 @@ FORMAT_FLAC = "flac"
 SUPPORTED_FILE_FORMATS = (FORMAT_WAV, FORMAT_MP3, FORMAT_FLAC)
 
 
+# Returns default microphone JSON settings for holding user-set parameters in main.py
 def default_settings():
     return {
         "device_index": None,
@@ -39,6 +40,7 @@ def default_settings():
     }
 
 
+# Loads microphone_settings.json 
 def load_settings():
     if not SETTINGS_PATH.exists():
         return default_settings()
@@ -51,28 +53,34 @@ def load_settings():
     return defaults
 
 
+# Writes microphone_settings.json
 def save_settings(settings):
     with SETTINGS_PATH.open("w", encoding="utf-8") as settings_file:
         json.dump(settings, settings_file, indent=2)
 
 
+# Builds the timestamp stem for audio output files
 def get_recording_stem():
     return datetime.now().strftime("Recording_%H%M%S_%d_%m")
 
 
+# Checks whether a sound device entry supports input channels
 def is_input_mic(device):
     return device["max_input_channels"] > 0
 
 
+# Checks whether a device name contains the requested keyword --> --filter "keyword"
 def mic_matches_keyword(device, keyword):
     return keyword.lower() in device["name"].lower()
 
 
+# Looks up the host API name for a sounddevice entry
 def get_host_api_name(device):
     host_api_index = device["hostapi"]
     return sd.query_hostapis(host_api_index)["name"]
 
 
+# Returns host-specific input stream settings, used by recording and preflight checks.
 def get_input_extra_settings(device_index):
     device = sd.query_devices(device_index)
     host_api_name = get_host_api_name(device)
@@ -83,6 +91,7 @@ def get_input_extra_settings(device_index):
     return None
 
 
+# Lists available input microphones in the terminal used by Main.py --> --list-devices
 def list_input_mics(keyword=None):
     print("Available input microphone devices:")
     input_mics = []
@@ -115,6 +124,7 @@ def list_input_mics(keyword=None):
         )
 
 
+# Auto-selects the highest-sample-rate input matching a keyword, used in resolve_recording_device()
 def find_input_mic(keyword):
     matching_mics = []
 
@@ -129,6 +139,7 @@ def find_input_mic(keyword):
     return best_index
 
 
+# Validates and returns input microphone by user system index
 def get_input_mic(device_index):
     devices = sd.query_devices()
 
@@ -142,6 +153,7 @@ def get_input_mic(device_index):
     return device
 
 
+# Saves the selected recording device index in JSON, used by handle_microphone_args().
 def set_recording_device(settings, device_index):
     device = get_input_mic(device_index)
     if device is None:
@@ -156,10 +168,12 @@ def set_recording_device(settings, device_index):
     return True
 
 
+# Normalizes user/file format text to lowercase
 def normalize_file_format(file_format):
     return file_format.strip().lower()
 
 
+# Resolves the active recording format with fallback to default
 def get_recording_format(settings, default_file_format=DEFAULT_FILE_FORMAT):
     file_format = normalize_file_format(settings.get("file_format", default_file_format))
     if file_format not in SUPPORTED_FILE_FORMATS:
@@ -168,6 +182,7 @@ def get_recording_format(settings, default_file_format=DEFAULT_FILE_FORMAT):
     return file_format
 
 
+# Saves the selected microphone output format in JSON
 def set_recording_format(settings, file_format):
     file_format = normalize_file_format(file_format)
     if file_format not in SUPPORTED_FILE_FORMATS:
@@ -183,6 +198,7 @@ def set_recording_format(settings, file_format):
     return True
 
 
+# Prints microphone settings to terminal, used by Main.py --> --info 
 def print_recording_info(settings, sample_rate, channels, file_format, default_duration):
     device_index = settings["device_index"]
     duration_seconds = default_duration
@@ -207,6 +223,7 @@ def print_recording_info(settings, sample_rate, channels, file_format, default_d
     )
 
 
+# Writes raw int16 audio data to a WAV file. used by record_from_settings() before final export to MP3/FLAC
 def write_wav(path, audio, sample_rate, channels):
     path.parent.mkdir(parents=True, exist_ok=True)
     audio = np.asarray(audio, dtype=np.int16)
@@ -218,6 +235,7 @@ def write_wav(path, audio, sample_rate, channels):
         wav_file.writeframes(audio.tobytes())
 
 
+# Converts a WAV file to FLAC with ffmpeg
 def convert_wav_to_flac(wav_path, flac_path):
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
@@ -241,6 +259,7 @@ def convert_wav_to_flac(wav_path, flac_path):
     return True
 
 
+# Converts a WAV file to MP3 with ffmpeg
 def convert_wav_to_mp3(wav_path, mp3_path):
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
@@ -270,11 +289,13 @@ def convert_wav_to_mp3(wav_path, mp3_path):
     return True
 
 
+# Keeps and reports the WAV recording
 def save_wav_recording(wav_path):
     print(f"Saved WAV: {wav_path}")
     return wav_path
 
 
+# Exports MP3 from the WAV recording
 def save_mp3_recording(wav_path, mp3_path):
     mp3_created = convert_wav_to_mp3(wav_path, mp3_path)
     if not mp3_created:
@@ -285,6 +306,7 @@ def save_mp3_recording(wav_path, mp3_path):
     return mp3_path
 
 
+# Exports FLAC from the WAV recording 
 def save_flac_recording(wav_path, flac_path):
     flac_created = convert_wav_to_flac(wav_path, flac_path)
     if not flac_created:
@@ -295,6 +317,7 @@ def save_flac_recording(wav_path, flac_path):
     return flac_path
 
 
+# Dispatches the WAV recording to WAV, MP3, or FLAC output depending on user settings
 def save_recording_by_format(wav_path, recording_format):
     recording_format = normalize_file_format(recording_format)
 
@@ -310,6 +333,7 @@ def save_recording_by_format(wav_path, recording_format):
     raise ValueError(f"Unsupported microphone file format: {recording_format}")
 
 
+# Records audio chunks from the selected input device
 def record_audio(device_index, duration_seconds, sample_rate, channels, stop_event=None):
     print(f"Recording {duration_seconds} seconds from device index {device_index}...")
     extra_settings = get_input_extra_settings(device_index)
@@ -346,6 +370,7 @@ def record_audio(device_index, duration_seconds, sample_rate, channels, stop_eve
     return np.concatenate(audio_chunks, axis=0)
 
 
+# Tests whether the configured microphone can open at the requested rate/channels, helper before running main.py
 def can_record_from_settings(
     settings,
     sample_rate,
@@ -383,6 +408,7 @@ def can_record_from_settings(
     return True
 
 
+# Chooses the recording device from explicit override, saved JSON
 def resolve_recording_device(settings, keyword, device_override=None):
     device_index = device_override if device_override is not None else settings["device_index"]
     if device_index is None:
@@ -391,7 +417,8 @@ def resolve_recording_device(settings, keyword, device_override=None):
     return device_index
 
 
-def record_from_settings(settings, sample_rate, channels, duration_seconds, file_format,keyword, device_override, mp3, stop_event):
+# Records audio using saved settings and exports the requested format
+def record_from_settings(settings, sample_rate, channels, duration_seconds, file_format, keyword, device_override, mp3, stop_event):
     device_index = resolve_recording_device(settings, keyword, device_override)
     if device_index is None:
         print(f"No input microphone found containing '{keyword}'.")
@@ -423,6 +450,7 @@ def record_from_settings(settings, sample_rate, channels, duration_seconds, file
         return wav_path
 
 
+# Registers microphone-related CLI arguments, used in main.py for parsing settings before execution
 def add_microphone_arguments(parser):
     parser.add_argument("--mic", action="store_true", help="Configure or target microphone settings.")
     parser.add_argument("--list-devices", action="store_true", help="Show input microphone devices and exit.")
@@ -437,6 +465,7 @@ def add_microphone_arguments(parser):
     parser.add_argument("--mp3", action="store_true", help="Also export an MP3 preview using ffmpeg.")
 
 
+# Handles microphone actions without starting unrelated peripherals
 def handle_microphone_args(args, sample_rate, channels, file_format, duration_seconds, record_when_no_command=False):
     settings = load_settings()
 
@@ -484,17 +513,18 @@ def handle_microphone_args(args, sample_rate, channels, file_format, duration_se
     return False
 
 
+# Main Microphone function
 def main():
     parser = argparse.ArgumentParser(description="Record audio from the Pettersson M500.")
     add_microphone_arguments(parser)
     args = parser.parse_args()
     handle_microphone_args(
         args,
-        sample_rate=DEFAULT_SAMPLE_RATE,
-        channels=DEFAULT_CHANNELS,
+        sample_rate=44100,
+        channels=1,
         file_format=DEFAULT_FILE_FORMAT,
-        duration_seconds=DEFAULT_TIME,
-        record_when_no_command=DEFAULT_RECORD,
+        duration_seconds=5.0,
+        record_when_no_command=True,
     )
 
 
