@@ -6,7 +6,7 @@
 # Author: Tevyn Vergara
 # Date: 01/06/2026
 
-############################################ Standard Library Imports ################################################
+############################################## Standard Library Imports #################################################
 
 import argparse
 import json
@@ -20,7 +20,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-# Local python funcitonality drivers (do not touch)
+################################################ Local Module Imports ###################################################
 import Camera
 import Microphone
 import Motor
