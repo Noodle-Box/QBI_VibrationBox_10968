@@ -42,8 +42,8 @@ KILL_BUTTON = "k"               # Press this key to stop all peripherals during 
 
 # Speaker Macros
 SPEAKER_FREQ = 250              # (Hz), Beep Freq
-SPEAKER_TIME = 1.0              # (s), Speaker ON time
-SPEAKER_INTERVAL = 3.0          # (s), Speaker OFF time
+SPEAKER_ON = 1.0              # (s), Speaker ON time
+SPEAKER_OFF = 3.0          # (s), Speaker OFF time
 SPEAKER_SAMPLE_RATE = 44100     # (Hz), Sample rate for audio generation
 SPEAKER_AMPLITUDE = 1           # Amplitude of the sinusodial beep sound. Adjust knob on speaker for real-world volume 
 
@@ -58,7 +58,7 @@ CAMERA_FILE_FORMAT = "H265"     # File format for the recorded video
 
 
 # Microphone Macros
-MIC_DEVICE = 22                 # Set after --list-devices. Example: 15. Use None for auto-select.
+MIC_DEVICE = 17                 # Set after --list-devices. Example: 15. Use None for auto-select.
 MIC_SAMPLE_RATE = 384000        # (Hz), Sample rate in Hz.
 MIC_CHANNELS = 1                # (int), Mono recording. Set to 2 for stereo if microphone supports it.
 MIC_FORMAT = "FLAC"             # File format for the recorded audio. Common options: "WAV", "FLAC", "MP3"
@@ -264,8 +264,8 @@ def print_camera_settings(record_time):
 def print_speaker_settings():
     print(
         f"Frequency: {SPEAKER_FREQ} Hz \n"
-        f"Beep Duration: {SPEAKER_TIME} s \n"
-        f"Interval: {SPEAKER_INTERVAL} s \n"
+        f"Beep Duration: {SPEAKER_ON} s \n"
+        f"Interval: {SPEAKER_OFF} s \n"
         f"Sample Rate: {SPEAKER_SAMPLE_RATE} Hz \n"
         f"Amplitude: {SPEAKER_AMPLITUDE}"
     )
@@ -431,8 +431,8 @@ def run_speaker(record_time, stop_event=None):
             duration_seconds=record_time,
             stop_event=stop_event,
             frequency_hz=SPEAKER_FREQ,
-            beep_duration_seconds=SPEAKER_TIME,
-            interval_seconds=SPEAKER_INTERVAL,
+            beep_duration_seconds=SPEAKER_ON,
+            interval_seconds=SPEAKER_OFF,
             sample_rate=SPEAKER_SAMPLE_RATE,
             amplitude=SPEAKER_AMPLITUDE,
         )

@@ -96,11 +96,11 @@ def print_menu(strength, on_time, off_time, kill_button, motor_on=True, time_lef
 
     print("CMD | Current Setting | Description")
     print()
-    print(f"p               | {'on' if motor_on else 'off'} | Toggle ON/OFF vibrations without quitting run time")
-    print(f"s               | {strength}                    | Vibration strength - strength of motor")
-    print(f"n               | {on_time} ms                  | Motor on time")
-    print(f"m               | {off_time} ms                 | Motor off time")
-    print(f"{kill_button}   |                -              | Kill all peripherals and process clipped recordings")
+    print(f"{'p':<3} | {('on' if motor_on else 'off'):<15} | Toggle ON/OFF vibrations without quitting run time")
+    print(f"{'s':<3} | {strength:<15} | Vibration strength - strength of motor")
+    print(f"{'n':<3} | {f'{on_time} ms':<15} | Motor on time")
+    print(f"{'m':<3} | {f'{off_time} ms':<15} | Motor off time")
+    print(f"{kill_button:<3} | {'-':<15} | Kill all peripherals and process clipped recordings")
 
 
 # Parses one typed motor command and applies it over serial; used by manual and timed motor loops.
