@@ -397,11 +397,10 @@ def record_from_settings(
     channels,
     duration_seconds,
     file_format,
-    keyword=DEFAULT_KEYWORD,
-    device_override=None,
-    duration_override=None,
-    mp3=False,
-    stop_event=None,
+    keyword,
+    device_override,
+    mp3,
+    stop_event,
 ):
     device_index = resolve_recording_device(settings, keyword, device_override)
     if device_index is None:
@@ -410,7 +409,6 @@ def record_from_settings(
         list_input_mics(keyword)
         return None
 
-    duration_seconds = duration_override if duration_override is not None else duration_seconds
     recording_stem = get_recording_stem()
     wav_path = RECORDINGS_DIR / f"{recording_stem}.wav"
     recording_format = get_recording_format(settings, file_format)
@@ -491,12 +489,12 @@ def handle_microphone_args(
             settings,
             sample_rate=sample_rate,
             channels=channels,
-            duration_seconds=duration_seconds,
+            duration_seconds=args.duration if args.duration is not None else duration_seconds,
             file_format=file_format,
             keyword=args.keyword,
             device_override=args.device,
-            duration_override=args.duration,
             mp3=args.mp3,
+            stop_event=None,
         )
         return True
 

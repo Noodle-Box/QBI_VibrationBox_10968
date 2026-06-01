@@ -78,7 +78,7 @@ def save_current_settings(settings_callback, strength, on_time, off_time):
         settings_callback(strength, on_time, off_time)
 
 
-def print_menu(strength, on_time, off_time, motor_on=True, time_left=None, kill_button="k"):
+def print_menu(strength, on_time, off_time, kill_button, motor_on=True, time_left=None):
     print()
     if time_left is not None:
         print(f"Current time left: {max(0, int(time_left))} seconds")
@@ -150,7 +150,7 @@ def handle_user_command(arduino, user_input, strength, on_time, off_time, motor_
     return strength, on_time, off_time, motor_on
 
 
-def read_nonblocking_command(command_buffer, stop_event=None, kill_button="k"):
+def read_nonblocking_command(command_buffer, stop_event, kill_button):
     while msvcrt.kbhit():
         char = msvcrt.getwch()
 
@@ -187,11 +187,11 @@ def print_available_serial_ports():
             print(f"  {port.device}: {port.description}")
 
 
-def run_manual_motor_loop(arduino, strength, on_time, off_time, settings_callback=None):
+def run_manual_motor_loop(arduino, strength, on_time, off_time, kill_button, settings_callback=None):
     motor_on = True
 
     while True:
-        print_menu(strength, on_time, off_time, motor_on)
+        print_menu(strength, on_time, off_time, kill_button, motor_on)
         user_input = input("> ").strip()
         strength, on_time, off_time, motor_on = handle_user_command(
             arduino,
@@ -204,12 +204,12 @@ def run_manual_motor_loop(arduino, strength, on_time, off_time, settings_callbac
         )
 
 
-def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds, stop_event=None, kill_button="k", settings_callback=None):
+def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds, stop_event, kill_button, settings_callback=None):
     motor_on = True
     command_buffer = ""
     end_time = time.monotonic() + duration_seconds
 
-    print_menu(strength, on_time, off_time, motor_on, end_time - time.monotonic(), kill_button)
+    print_menu(strength, on_time, off_time, kill_button, motor_on, end_time - time.monotonic())
     print("> ", end="", flush=True)
 
     killed = False
@@ -236,7 +236,7 @@ def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds,
                 settings_callback,
             )
 
-            print_menu(strength, on_time, off_time, motor_on, end_time - time.monotonic(), kill_button)
+            print_menu(strength, on_time, off_time, kill_button, motor_on, end_time - time.monotonic())
             print("> ", end="", flush=True)
 
         time.sleep(0.05)
@@ -249,7 +249,17 @@ def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds,
         print("Motor record time ended. Motor stopped.")
 
 
-def run_motor_driver(serial_port, baud_rate, strength, on_time, off_time, duration_seconds=None, stop_event=None, kill_button="k", settings_callback=None):
+def run_motor_driver(
+    serial_port,
+    baud_rate,
+    strength,
+    on_time,
+    off_time,
+    kill_button,
+    duration_seconds=None,
+    stop_event=None,
+    settings_callback=None,
+):
     try:
         with serial.Serial(serial_port, baud_rate, timeout=1) as arduino:
             time.sleep(2)  # Give the Arduino time to reset after opening serial.
@@ -261,7 +271,7 @@ def run_motor_driver(serial_port, baud_rate, strength, on_time, off_time, durati
             )
 
             if duration_seconds is None:
-                run_manual_motor_loop(arduino, strength, on_time, off_time, settings_callback)
+                run_manual_motor_loop(arduino, strength, on_time, off_time, kill_button, settings_callback)
             else:
                 run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds, stop_event, kill_button, settings_callback)
     except serial.SerialException as exc:

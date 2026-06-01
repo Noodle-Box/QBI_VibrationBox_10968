@@ -235,11 +235,11 @@ def run_camera(
     fps,
     duration_seconds,
     file_format,
-    device_ip=None,
-    record_video=True,
-    view="center",
-    window_name="OAK-D RGB",
-    stop_event=None,
+    device_ip,
+    record_video,
+    view,
+    window_name,
+    stop_event,
 ):
     recording_stem = get_recording_stem()
     output_format = file_format.lower()
@@ -297,7 +297,10 @@ def run_camera(
                 video_writer.release()
                 video_writer = None
 
-            cv2.destroyWindow(window_name)
+            try:
+                cv2.destroyWindow(window_name)
+            except cv2.error:
+                pass
 
             if record_video:
                 saved_video_path = writer_path

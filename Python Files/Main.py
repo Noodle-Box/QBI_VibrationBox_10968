@@ -50,6 +50,7 @@ SPEAKER_AMPLITUDE = 1           # Amplitude of the sinusodial beep sound. Adjust
 
 # Camera Macros
 CAMERA_IP = "169.254.1.222"     # Set after --list-cameras. Example: "169.254.1.222". Use None for auto-discover.
+CAMERA_VIEW = "right"          # Camera view options: "center", "left", "right", "stereo".
 CAMERA_WIDTH = 1280             # (pixels), Width of the camera image
 CAMERA_HEIGHT = 720             # (pixels), Height of the camera image
 CAMERA_FPS = 30                 # (fp/s), Frames per second for the camera
@@ -156,8 +157,12 @@ def save_default_microphone_settings():
 
 
 def save_default_camera_settings():
+    if CAMERA_VIEW not in ("center", "left", "right", "stereo"):
+        raise ValueError('CAMERA_VIEW must be "center", "left", "right", or "stereo".')
+
     settings = Camera.default_settings()
     settings["device_ip"] = CAMERA_IP
+    settings["view"] = CAMERA_VIEW
     Camera.save_settings(settings)
     return settings
 
@@ -340,7 +345,9 @@ def record_microphone(record_time, stop_event=None):
         channels=MIC_CHANNELS,
         duration_seconds=record_time,
         file_format=Microphone.get_recording_format(mic_settings, MIC_FORMAT),
-        duration_override=record_time,
+        keyword=Microphone.DEFAULT_KEYWORD,
+        device_override=None,
+        mp3=False,
         stop_event=stop_event,
     )
 
@@ -357,6 +364,7 @@ def run_camera(record_time, stop_event=None):
             device_ip=camera_settings["device_ip"],
             record_video=camera_settings["record_video"],
             view=camera_settings["view"],
+            window_name="OAK-D Camera",
             stop_event=stop_event,
         )
     except Exception as exc:

@@ -41,15 +41,8 @@ def wait_until_next_beep(interval_seconds, beep_started_at, stop_event=None):
         time.sleep(0.05)
 
 
-def run_speaker(
-    duration_seconds,
-    stop_event=None,
-    frequency_hz=1000,
-    beep_duration_seconds=1.0,
-    interval_seconds=10.0,
-    sample_rate=44100,
-    amplitude=0.25,
-):
+def run_speaker(duration_seconds, stop_event, frequency_hz, beep_duration_seconds, interval_seconds, sample_rate, amplitude):
+
     tone = generate_tone(frequency_hz, beep_duration_seconds, sample_rate, amplitude)
     end_time = time.monotonic() + duration_seconds if duration_seconds is not None else None
 
