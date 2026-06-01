@@ -249,17 +249,7 @@ def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds,
         print("Motor record time ended. Motor stopped.")
 
 
-def run_motor_driver(
-    serial_port,
-    baud_rate,
-    strength,
-    on_time,
-    off_time,
-    kill_button,
-    duration_seconds=None,
-    stop_event=None,
-    settings_callback=None,
-):
+def run_motor_driver(serial_port, baud_rate, strength, on_time, off_time, kill_button, duration_seconds=None, stop_event=None, settings_callback=None):
     try:
         with serial.Serial(serial_port, baud_rate, timeout=1) as arduino:
             time.sleep(2)  # Give the Arduino time to reset after opening serial.

@@ -391,17 +391,7 @@ def resolve_recording_device(settings, keyword, device_override=None):
     return device_index
 
 
-def record_from_settings(
-    settings,
-    sample_rate,
-    channels,
-    duration_seconds,
-    file_format,
-    keyword,
-    device_override,
-    mp3,
-    stop_event,
-):
+def record_from_settings(settings, sample_rate, channels, duration_seconds, file_format,keyword, device_override, mp3, stop_event):
     device_index = resolve_recording_device(settings, keyword, device_override)
     if device_index is None:
         print(f"No input microphone found containing '{keyword}'.")
@@ -447,14 +437,7 @@ def add_microphone_arguments(parser):
     parser.add_argument("--mp3", action="store_true", help="Also export an MP3 preview using ffmpeg.")
 
 
-def handle_microphone_args(
-    args,
-    sample_rate,
-    channels,
-    file_format,
-    duration_seconds,
-    record_when_no_command=False,
-):
+def handle_microphone_args(args, sample_rate, channels, file_format, duration_seconds, record_when_no_command=False):
     settings = load_settings()
 
     if args.list_devices:
