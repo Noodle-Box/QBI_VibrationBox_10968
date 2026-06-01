@@ -35,7 +35,7 @@ RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # Recording Macros
-DEFAULT_RECORD_TIME = 60.0      # (s), Recording duration
+DEFAULT_RECORD_TIME = 20.0      # (s), Recording duration
 DEFAULT_MERGE_AV = True         # True exports a merged MP4 when mic and camera are enabled.
 KILL_BUTTON = "k"               # Press this key to stop all peripherals during recording.
 
@@ -58,10 +58,10 @@ CAMERA_FILE_FORMAT = "H265"     # File format for the recorded video
 
 
 # Microphone Macros
-MIC_DEVICE = 17                 # Set after --list-devices. Example: 15. Use None for auto-select.
+MIC_DEVICE = 22                 # Set after --list-devices. Example: 15. Use None for auto-select.
 MIC_SAMPLE_RATE = 384000        # (Hz), Sample rate in Hz.
 MIC_CHANNELS = 1                # (int), Mono recording. Set to 2 for stereo if microphone supports it.
-MIC_FORMAT = "WAV"             # File format for the recorded audio. Common options: "WAV", "FLAC", "MP3"
+MIC_FORMAT = "FLAC"             # File format for the recorded audio. Common options: "WAV", "FLAC", "MP3"
 
 
 # Motor Macros
