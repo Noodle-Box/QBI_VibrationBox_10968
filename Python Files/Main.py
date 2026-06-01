@@ -20,7 +20,8 @@ import Speaker
 ###################################### CHANGE THESE AS NEEDED #################################################
 
 # Recording paths (Change for where you want to autosave the recordings)
-RECORDINGS_DIR = Path(r"C:\Users\uqtverga\Documents\Local Python Dev environment\QBI---Vibration-Box-10968-\Python Files\recordings")
+CUSTOM_RECORDINGS_DIR = None    # Example: r"C:\Users\YourName\Documents\VibrationBoxRecordings". Use None for repo-local recordings.
+RECORDINGS_DIR = Path(CUSTOM_RECORDINGS_DIR) if CUSTOM_RECORDINGS_DIR else Path(__file__).resolve().parent / "recordings"
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 
