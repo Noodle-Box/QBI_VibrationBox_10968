@@ -1,9 +1,11 @@
-#include <Arduino.h>
+/***************************************************************************************/
+// File: Arduino Driver
+// Project: Time Locked Box Simulator
+//Research Group: Suarez Lab, Queensland Brain Institute, UQ
+//
+// Author: Simon / Tevyn
 
-/*
- * Serial Controlled Vibration Platform
- * Commands: "s:150" (PWM strength), "n:200" (200ms ON), "m:500" (500ms OFF)
- */
+#include <Arduino.h>
 
 int motorPin = 9;
 int strength = 0; // PWM value, updated from Python with s:[0 or 30-250].
