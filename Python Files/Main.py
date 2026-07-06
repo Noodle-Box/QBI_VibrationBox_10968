@@ -12,11 +12,9 @@ import argparse
 import json
 import multiprocessing
 import msvcrt
-import os
 import shutil
 import subprocess
 import threading
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -29,21 +27,21 @@ import Speaker
 ####################################### Peripheral Settings: CHANGE THESE AS NEEDED #########################################
 
 # Recording paths (Change for where you want to autosave the recordings)
-CUSTOM_RECORDINGS_DIR = None    # Example: r"C:\Users\YourName\Documents\VibrationBoxRecordings". Use None for repo-local recordings.
+CUSTOM_RECORDINGS_DIR = r"C:\Users\uqtverga\Documents\Local Python Dev environment\QBI---Vibration-Box-10968-\Python Files\recordings"    # Example: r"C:\Users\YourName\Documents\VibrationBoxRecordings". Use None for repo-local recordings.
 RECORDINGS_DIR = Path(CUSTOM_RECORDINGS_DIR) if CUSTOM_RECORDINGS_DIR else Path(__file__).resolve().parent / "recordings"
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # Recording Macros
-DEFAULT_RECORD_TIME = 20.0      # (s), Recording duration
+DEFAULT_RECORD_TIME = 30.0      # (s), Recording duration
 DEFAULT_MERGE_AV = True         # True exports a merged MP4 when mic and camera are enabled.
 KILL_BUTTON = "k"               # Press this key to stop all peripherals during recording.
 
 
 # Speaker Macros
 SPEAKER_FREQ = 250              # (Hz), Beep Freq
-SPEAKER_ON = 1.0              # (s), Speaker ON time
-SPEAKER_OFF = 3.0          # (s), Speaker OFF time
+SPEAKER_ON = 1.0                # (s), Speaker ON time
+SPEAKER_OFF = 3.0               # (s), Speaker OFF time
 SPEAKER_SAMPLE_RATE = 44100     # (Hz), Sample rate for audio generation
 SPEAKER_AMPLITUDE = 1           # Amplitude of the sinusodial beep sound. Adjust knob on speaker for real-world volume 
 
@@ -58,7 +56,7 @@ CAMERA_FILE_FORMAT = "H265"     # File format for the recorded video
 
 
 # Microphone Macros
-MIC_DEVICE = 17                 # Set after --list-devices. Example: 15. Use None for auto-select.
+MIC_DEVICE = 12                 # Set after --list-devices. Example: 15. Use None for auto-select.
 MIC_SAMPLE_RATE = 384000        # (Hz), Sample rate in Hz.
 MIC_CHANNELS = 1                # (int), Mono recording. Set to 2 for stereo if microphone supports it.
 MIC_FORMAT = "FLAC"             # File format for the recorded audio. Common options: "WAV", "FLAC", "MP3"
@@ -401,29 +399,6 @@ def run_camera(record_time, stop_event=None):
         print(f"Camera stopped with an error: {exc}")
         return None
 
-
-# Runs camera capture in a separate process and returns the video path through a queue; used by run_enabled_peripherals().
-def run_camera_process(record_time, stop_event, result_queue):
-    devnull_fd = os.open(os.devnull, os.O_WRONLY)
-    os.dup2(devnull_fd, 2)
-    os.close(devnull_fd)
-
-    video_path = run_camera(record_time, stop_event)
-    result_queue.put(str(video_path) if video_path is not None else "")
-
-
-# Reads the last camera video path from the process queue; used after the camera process joins.
-def get_camera_process_result(result_queue):
-    video_path = None
-
-    while result_queue is not None and not result_queue.empty():
-        candidate = result_queue.get_nowait()
-        if candidate:
-            video_path = Path(candidate)
-
-    return video_path
-
-
 # Runs the speaker driver for the shared record time; used by run_enabled_peripherals().
 def run_speaker(record_time, stop_event=None):
     try:
@@ -457,9 +432,6 @@ def merge_audio_video(video_path, audio_path):
         return None
 
     output_path = RECORDINGS_DIR / f"{get_recording_stem()}.mp4"
-    video_input_args = []
-    if Path(video_path).suffix.lower() == ".h265":
-        video_input_args = ["-f", "hevc", "-framerate", str(CAMERA_FPS)]
 
     command = [
         ffmpeg,
@@ -467,25 +439,15 @@ def merge_audio_video(video_path, audio_path):
         "-hide_banner",
         "-loglevel",
         "error",
-        *video_input_args,
-        "-i",
-        str(video_path),
-        "-i",
-        str(audio_path),
-        "-c:v",
-        "libx265",
-        "-x265-params",
-        "log-level=error",
-        "-tag:v",
-        "hvc1",
-        "-pix_fmt",
-        "yuv420p",
-        "-c:a",
-        "aac",
-        "-ar",
-        "48000",
-        "-ac",
-        "1",
+        "-f", "hevc",
+        "-framerate", str(CAMERA_FPS),
+        "-i", str(video_path),
+        "-i", str(audio_path),
+        "-c:v", "copy",
+        "-tag:v", "hvc1",
+        "-c:a", "aac",
+        "-ar", "48000",
+        "-ac", "1",
         "-shortest",
         str(output_path),
     ]
@@ -501,37 +463,6 @@ def merge_audio_video(video_path, audio_path):
     print(f"Saved merged audio/video MP4: {output_path}")
     print("Note: merged MP4 audio is downsampled to 48 kHz. The standalone audio recording keeps the original microphone data.")
     return output_path
-
-
-# Finds a camera recording saved after the run started; used if the camera child process crashes before queue return.
-def recover_camera_recording(start_time):
-    candidates = []
-    for pattern in ("Recording_*.h265", "Recording_*_capture.avi", "Recording_*.avi", "Recording_*.mp4"):
-        candidates.extend(RECORDINGS_DIR.glob(pattern))
-
-    candidates = [
-        path for path in candidates
-        if path.is_file() and path.stat().st_mtime >= start_time
-    ]
-
-    if not candidates:
-        return None
-
-    latest_path = max(candidates, key=lambda path: path.stat().st_mtime)
-    if latest_path.suffix.lower() != ".avi" or not latest_path.stem.endswith("_capture"):
-        return latest_path
-
-    output_path = latest_path.with_name(f"{latest_path.stem.removesuffix('_capture')}.h265")
-    try:
-        recovered_path = Camera.convert_video_to_h265(latest_path, output_path)
-        print(f"Recovered camera video from capture file: {recovered_path}")
-        return recovered_path
-    except subprocess.CalledProcessError as exc:
-        print(f"Camera recovery H.265 export failed: {exc}")
-        if exc.stderr:
-            print(exc.stderr)
-        return latest_path
-
 
 # Watches keyboard input for the global kill button when motor is disabled; used by run_enabled_peripherals().
 def watch_for_global_kill(stop_event, done_event, kill_button):
@@ -572,11 +503,8 @@ def run_enabled_peripherals(peripheral_settings):
 
     # Create shared runtime state for threads, camera process, and output paths.
     worker_threads = []
-    camera_process = None
-    camera_result_queue = None
     stop_event = multiprocessing.Event()
     done_event = threading.Event()
-    run_started_at = time.time()
     recording_paths = {
         "audio": None,
         "video": None,
@@ -611,14 +539,15 @@ def run_enabled_peripherals(peripheral_settings):
         motor_thread.start()
         worker_threads.append(motor_thread)
 
-    # Start the camera in a process to isolate DepthAI shutdown crashes from Main.py.
+    # Start the camera in a thread for live preview window support on Windows.
+    camera_thread = None
+    camera_video_path = [None]
     if camera_enabled:
-        camera_result_queue = multiprocessing.Queue()
-        camera_process = multiprocessing.Process(
-            target=run_camera_process,
-            args=(record_time, stop_event, camera_result_queue),
-        )
-        camera_process.start()
+        def camera_thread_fn():
+            camera_video_path[0] = run_camera(record_time, stop_event)
+        camera_thread = threading.Thread(target=camera_thread_fn, daemon=True)
+        camera_thread.start()
+        worker_threads.append(camera_thread)
 
     # Start speaker beeps in a thread so audio output runs during the shared record time.
     if speaker_enabled:
@@ -632,15 +561,12 @@ def run_enabled_peripherals(peripheral_settings):
         # Wait for motor and speaker threads to finish after microphone recording ends.
         for worker_thread in worker_threads:
             worker_thread.join()
-        # Wait for camera process and collect the saved video path.
-        if camera_process is not None:
-            camera_process.join()
-            recording_paths["video"] = get_camera_process_result(camera_result_queue)
-        done_event.set()
 
-        # Recover the newest camera file if the camera process did not return a path.
-        if camera_enabled and recording_paths["video"] is None:
-            recording_paths["video"] = recover_camera_recording(run_started_at)
+        # Collect the saved video path from the camera thread.
+        if camera_enabled:
+            recording_paths["video"] = camera_video_path[0]
+            
+        done_event.set()
 
         # Merge audio and video if both features are enabled.
         if merge_enabled and camera_enabled:
@@ -651,14 +577,11 @@ def run_enabled_peripherals(peripheral_settings):
     # If microphone is off, wait for all worker threads and camera process to finish.
     for worker_thread in worker_threads:
         worker_thread.join()
-    if camera_process is not None:
-        camera_process.join()
-        recording_paths["video"] = get_camera_process_result(camera_result_queue)
-    done_event.set()
 
-    # Recover a camera file for camera-only runs if needed.
-    if camera_enabled and recording_paths["video"] is None:
-        recording_paths["video"] = recover_camera_recording(run_started_at)
+    if camera_enabled:
+        recording_paths["video"] = camera_video_path[0]
+
+    done_event.set()
 
 ###################################################### Main Function ###########################################################
 # Parses CLI arguments, updates JSON settings, prints info, or starts enabled peripherals.

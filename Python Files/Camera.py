@@ -8,8 +8,6 @@
 
 ############################################ Standard Library Imports ################################################
 import json
-import shutil
-import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -129,41 +127,68 @@ def create_rgb_output(pipeline, width, height, fps):
     output_capability = dai.ImgFrameCapability()
     output_capability.size.fixed((width, height))
     output_capability.fps.fixed(fps)
-    return color_camera.requestOutput(output_capability, True)
+
+    # Stream for live preview
+    preview_output = color_camera.requestOutput(output_capability, True)
+
+    # Stream for recording - ImageManip converts to NV12 which VideoEncoder requires
+    encoded_output = color_camera.requestOutput(output_capability, True)
+    manip = pipeline.create(dai.node.ImageManip)
+    manip.initialConfig.setFrameType(dai.ImgFrame.Type.NV12)
+    manip.setMaxOutputFrameSize(width * height * 3 // 2)
+    encoded_output.link(manip.inputImage)
+    encoder = pipeline.create(dai.node.VideoEncoder)
+    encoder.setDefaultProfilePreset(fps, dai.VideoEncoderProperties.Profile.H265_MAIN)
+    manip.out.link(encoder.input)
+
+    encoded_queue = encoder.bitstream.createOutputQueue(maxSize=60, blocking=False)
+
+    return preview_output, encoded_queue
 
 
 # Creates a mono camera output stream for left or right sockets
 def create_mono_output(pipeline, socket, width, height, fps):
+
     mono_camera = pipeline.create(dai.node.Camera).build(socket)
     output_capability = dai.ImgFrameCapability()
     output_capability.size.fixed((width, height))
     output_capability.fps.fixed(fps)
-    return mono_camera.requestOutput(output_capability, True)
 
+    # Stream for live preview
+    preview_output = mono_camera.requestOutput(output_capability, True)
+
+    # Stream for recording - ImageManip converts to NV12 which VideoEncoder requires
+    encoded_output = mono_camera.requestOutput(output_capability, True)
+    manip = pipeline.create(dai.node.ImageManip)
+    manip.initialConfig.setFrameType(dai.ImgFrame.Type.YUV400p)
+    manip.setMaxOutputFrameSize(width * height)
+    encoded_output.link(manip.inputImage)
+    encoder = pipeline.create(dai.node.VideoEncoder)
+    encoder.setDefaultProfilePreset(fps, dai.VideoEncoderProperties.Profile.H265_MAIN)
+    manip.out.link(encoder.input)
+
+    encoded_queue = encoder.bitstream.createOutputQueue(maxSize=60, blocking=False)
+
+    return preview_output, encoded_queue
 
 # Builds the DepthAI output stream map for center, left, right, or stereo view
 def create_camera_outputs(pipeline, view, width, height, fps):
     if view == "center":
-        return {
-            "center": create_rgb_output(pipeline, width, height, fps),
-        }
-
+        preview, enc_name = create_rgb_output(pipeline, width, height, fps)
+        return {"center": preview}, {"center": enc_name}
+    
     if view == "left":
-        return {
-            "left": create_mono_output(pipeline, dai.CameraBoardSocket.CAM_B, width, height, fps),
-        }
+        preview, enc_name = create_mono_output(pipeline, dai.CameraBoardSocket.CAM_B, width, height, fps)
+        return {"left": preview}, {"left": enc_name}
 
     if view == "right":
-        return {
-            "right": create_mono_output(pipeline, dai.CameraBoardSocket.CAM_C, width, height, fps),
-        }
+        preview, enc_name = create_mono_output(pipeline, dai.CameraBoardSocket.CAM_C, width, height, fps)
+        return {"right": preview}, {"right": enc_name}
 
     if view == "stereo":
-        return {
-            "left": create_mono_output(pipeline, dai.CameraBoardSocket.CAM_B, width, height, fps),
-            "right": create_mono_output(pipeline, dai.CameraBoardSocket.CAM_C, width, height, fps),
-        }
-
+        left_preview, left_enc_name = create_mono_output(pipeline, dai.CameraBoardSocket.CAM_B, width, height, fps)
+        right_preview, right_enc_name = create_mono_output(pipeline, dai.CameraBoardSocket.CAM_C, width, height, fps)
+        return {"left": left_preview, "right": right_preview}, {"left": left_enc_name, "right": right_enc_name}
     raise ValueError(f"Unknown camera view: {view}")
 
 
@@ -186,147 +211,88 @@ def get_preview_frame(view, queues):
     return ensure_bgr(queue.get().getCvFrame())
 
 
-# Opens an OpenCV video writer with fallback to MP4
-def create_video_writer(path, fps, width, height):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    codec_by_format = {
-        "avi": "XVID",
-        "mp4": "mp4v",
-    }
-    codec = codec_by_format.get(path.suffix.lower().lstrip("."), "XVID")
-    fourcc = cv2.VideoWriter_fourcc(*codec)
-    video_writer = cv2.VideoWriter(str(path), fourcc, fps, (width, height))
-
-    if video_writer.isOpened():
-        return video_writer, path
-
-    video_writer.release()
-
-    fallback_path = path.with_suffix(".mp4")
-    fallback_fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    fallback_writer = cv2.VideoWriter(str(fallback_path), fallback_fourcc, fps, (width, height))
-
-    if fallback_writer.isOpened():
-        print(f"Could not open AVI video writer. Recording MP4 instead: {fallback_path}")
-        return fallback_writer, fallback_path
-
-    fallback_writer.release()
-    raise RuntimeError("Could not open an OpenCV video writer for AVI or MP4.")
-
-
-# Converts the temporary OpenCV capture file to raw H.265
-def convert_video_to_h265(input_path, output_path):
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg is None:
-        print("ffmpeg was not found, so H.265 export was skipped.")
-        print(f"Camera video saved at: {input_path}")
-        return input_path
-
-    command = [
-        ffmpeg,
-        "-y",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-i",
-        str(input_path),
-        "-c:v",
-        "libx265",
-        "-x265-params",
-        "log-level=error",
-        "-an",
-        "-f",
-        "hevc",
-        str(output_path),
-    ]
-    subprocess.run(command, check=True, capture_output=True, text=True)
-    input_path.unlink(missing_ok=True)
-    return output_path
-
-
 # Runs live preview and optional recording for the configured OAK camera
 def run_camera(width, height, fps, duration_seconds, file_format, device_ip, record_video, view, window_name, stop_event):
+    
+    # Build directly as a h265 file for immediate writing
     recording_stem = get_recording_stem()
-    output_format = file_format.lower()
-    video_path = RECORDINGS_DIR / f"{recording_stem}.{output_format}"
-    writer_path = video_path
-    video_writer = None
-    output_width = width * 2 if view == "stereo" else width
-    output_height = height
+    video_path = RECORDINGS_DIR / f"{recording_stem}.h265"
 
-    if record_video:
-        if output_format == "h265":
-            writer_path = RECORDINGS_DIR / f"{recording_stem}_capture.avi"
-
-        video_writer, writer_path = create_video_writer(writer_path, fps, output_width, output_height)
-        print(f"Recording camera video to: {video_path}")
-
-    print(f"Starting {view} camera preview. Press q in the camera window to close preview.")
-
+    # Use saved IP OR camera auto-discover
     device_info = dai.DeviceInfo(device_ip) if device_ip else None
-
     if device_ip:
-        print(f"Connecting to OAK camera at {device_ip}...")
+        print(f"Connecting to OAK camera at IP: {device_ip}...buffffffffffering")
+
+    print(f"Starting camera preview with view: {view}. Press q to stop stimulation entirely")
 
     device_args = [device_info] if device_info else []
     saved_video_path = None
+
     with dai.Pipeline(dai.Device(*device_args)) as pipeline:
-        outputs = create_camera_outputs(pipeline, view, width, height, fps)
-        queues = {
-            name: output.createOutputQueue(maxSize=4, blocking=False)
-            for name, output in outputs.items()
-        }
+        # Build two sets of outputs: one for live preview, one for recording
+        # 1. preview_outputs - raw frames routed to OpenCV display
+        # 2. encoded_outputs - h265 encoded frames routed to file writing
+
+        preview_outputs, encoded_outputs = create_camera_outputs(pipeline, view, width, height, fps)
+
+        # Create host-side queues to receieve raw frames for live preview
+        preview_queues = {name: output.createOutputQueue(maxSize = 4, blocking = False) for name, output in preview_outputs.items()}
+
+        # Create host-side queues to receive encoded H265 packets from camera for direct file writing
+        encoded_queues = encoded_outputs
+
+        # Open output file for binary writing before recording loop begins
+        encoded_file = None
+        if record_video:
+            video_path.parent.mkdir(parents=True, exist_ok=True)
+            encoded_file = open(video_path, "wb")
+            print(f"Recording camera video to: {video_path} ... stand by...")
+
         pipeline.start()
         start_time = time.monotonic()
 
         try:
             while True:
-                frame = get_preview_frame(view, queues)
-
-                if video_writer is not None:
-                    video_writer.write(frame)
-
+                # Pull the next preview frame and display it on OpenCV window
+                frame = get_preview_frame(view, preview_queues)
                 cv2.imshow(window_name, frame)
 
+                # Drain all encoded packets that arrived in last loop and write them directly to .h265
+                if encoded_file is not None:
+                    for temp in encoded_queues.values():
+                        packet = temp.tryGet()
+                        while packet is not None:
+                            encoded_file.write(packet.getData())
+                            packet = temp.tryGet()
+                
+                # Check for user input to stop recording or exit
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord("q"):
+                    print("Stopping camera preview and recording...")
                     break
 
-                if duration_seconds is not None and time.monotonic() - start_time >= duration_seconds:
+                if duration_seconds is not None and (time.monotonic() - start_time) >= duration_seconds:
                     break
 
                 if stop_event is not None and stop_event.is_set():
                     break
+
         finally:
-            if video_writer is not None:
-                video_writer.release()
-                video_writer = None
+            if encoded_file is not None:
+                encoded_file.close()
+                saved_video_path = video_path
+                print(f"Camera video saved to: {saved_video_path}")
 
             try:
                 cv2.destroyWindow(window_name)
             except cv2.error:
                 pass
 
-            if record_video:
-                saved_video_path = writer_path
-                if output_format == "h265":
-                    try:
-                        saved_video_path = convert_video_to_h265(writer_path, video_path)
-                    except subprocess.CalledProcessError as exc:
-                        print(f"H.265 export failed: {exc}")
-                        if exc.stderr:
-                            print(exc.stderr)
-                        saved_video_path = writer_path
-
-                print(f"Saved camera video: {saved_video_path}")
-
     cv2.destroyAllWindows()
-
     if record_video:
         return saved_video_path
-
+    
     return None
-
 
 # Prints camera settings to terminal --> --info
 def print_camera_info(settings, width, height, fps, default_duration, file_format):
