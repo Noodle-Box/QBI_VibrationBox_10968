@@ -210,13 +210,30 @@ def get_preview_frame(view, queues):
     queue = queues[view]
     return ensure_bgr(queue.get().getCvFrame())
 
+# Returns left and right frames seperately for split viewing
+def get_stereo_frames(queues):
+    left_frame = ensure_bgr(queues["left"].get().getCvFrame())
+    right_frame = ensure_bgr(queues["right"].get().getCvFrame())
+    return left_frame, right_frame
 
 # Runs live preview and optional recording for the configured OAK camera
 def run_camera(width, height, fps, duration_seconds, file_format, device_ip, record_video, view, window_name, stop_event):
     
     # Build directly as a h265 file for immediate writing
     recording_stem = get_recording_stem()
-    video_path = RECORDINGS_DIR / f"{recording_stem}.h265"
+
+    # File extension handler
+    ext = file_format.lower()
+
+    # Seperate the paths for stereo mode recording
+    if view == "stereo":
+        video_path = {
+            "left": RECORDINGS_DIR / f"{recording_stem}_left.{ext}",
+            "right": RECORDINGS_DIR / f"{recording_stem}_right.{ext}"
+        }
+    else:
+        # Left, Right or Center viewing
+        video_path = RECORDINGS_DIR / f"{recording_stem}.{ext}"
 
     # Use saved IP OR camera auto-discover
     device_info = dai.DeviceInfo(device_ip) if device_ip else None
@@ -244,25 +261,42 @@ def run_camera(width, height, fps, duration_seconds, file_format, device_ip, rec
         # Open output file for binary writing before recording loop begins
         encoded_file = None
         if record_video:
-            video_path.parent.mkdir(parents=True, exist_ok=True)
-            encoded_file = open(video_path, "wb")
-            print(f"Recording camera video to: {video_path} ... stand by...")
-
+            if view == "stereo":
+                RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+                encoded_file = {
+                    "left": open(video_path["left"], "wb"),
+                    "right": open(video_path["right"], "wb")
+                }
+                print(f"Recording camera video to: {video_path['left']} and {video_path['right']} ... stand by...")
+            else: 
+                video_path.parent.mkdir(parents=True, exist_ok=True)
+                encoded_file = open(video_path, "wb")
+                print(f"Recording camera video to: {video_path} ... stand by...")
+        
+        # Start the DepthAI pipeline and record the start time for duration tracking
         pipeline.start()
         start_time = time.monotonic()
 
         try:
             while True:
-                # Pull the next preview frame and display it on OpenCV window
-                frame = get_preview_frame(view, preview_queues)
-                cv2.imshow(window_name, frame)
+
+                # Handle stereo view by seperating left and right frames for display
+                if view == "stereo":
+                    left_frame, right_frame = get_stereo_frames(preview_queues)
+                    cv2.imshow("OAK-D Left", left_frame)
+                    cv2.imshow("OAK-D Right", right_frame)
+                else:
+                    # For left, right, or center view, just display the single frame
+                    frame = get_preview_frame(view, preview_queues)
+                    cv2.imshow(window_name, frame)
 
                 # Drain all encoded packets that arrived in last loop and write them directly to .h265
                 if encoded_file is not None:
-                    for temp in encoded_queues.values():
+                    for stream_name, temp in encoded_queues.items():
+                        file_handle = encoded_file[stream_name] if isinstance(encoded_file, dict) else encoded_file
                         packet = temp.tryGet()
                         while packet is not None:
-                            encoded_file.write(packet.getData())
+                            file_handle.write(packet.getData())
                             packet = temp.tryGet()
                 
                 # Check for user input to stop recording or exit
@@ -279,12 +313,22 @@ def run_camera(width, height, fps, duration_seconds, file_format, device_ip, rec
 
         finally:
             if encoded_file is not None:
-                encoded_file.close()
-                saved_video_path = video_path
-                print(f"Camera video saved to: {saved_video_path}")
+                if isinstance(encoded_file, dict):
+                    for file_handle in encoded_file.values():
+                        file_handle.close()
+                    saved_video_path = video_path
+                    print(f"Camera video saved to: {video_path['left']} and {video_path['right']}")
+                else:
+                    encoded_file.close()
+                    saved_video_path = video_path
+                    print(f"Camera video saved to: {saved_video_path}")
 
             try:
-                cv2.destroyWindow(window_name)
+                if view == "stereo":
+                    cv2.destroyWindow("OAK-D Left")
+                    cv2.destroyWindow("OAK-D Right")
+                else:
+                    cv2.destroyWindow(window_name)
             except cv2.error:
                 pass
 

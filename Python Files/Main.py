@@ -1,6 +1,6 @@
 #######################################################################################################################
 # File: Main Controller
-# Project: Time Locked Box Simulator
+# Project: Time Locked Box Simulato
 # Research Group: Suarez Lab, Queensland Brain Institute, UQ
 #
 # Author: Tevyn Vergara
@@ -32,7 +32,7 @@ RECORDINGS_DIR = Path(CUSTOM_RECORDINGS_DIR) if CUSTOM_RECORDINGS_DIR else Path(
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Recording Macros
-DEFAULT_RECORD_TIME = 360.0      # (s), Recording duration
+DEFAULT_RECORD_TIME = 30.0      # (s), Recording duration
 DEFAULT_MERGE_AV = True         # True exports a merged MP4 when mic and camera are enabled.
 KILL_BUTTON = "k"               # Press this key to stop all peripherals during recording.
 
@@ -45,14 +45,14 @@ SPEAKER_AMPLITUDE = 1           # Amplitude of the sinusodial beep sound. Adjust
 
 # Camera Macros
 CAMERA_IP = "169.254.1.222"     # Set after --list-cameras. Example: "169.254.1.222". Use None for auto-discover.
-CAMERA_VIEW = "right"          # Camera view options: "center", "left", "right", "stereo".
+CAMERA_VIEW = "stereo"          # Camera view options: "center", "left", "right", "stereo".
 CAMERA_WIDTH = 1280             # (pixels), Width of the camera image
 CAMERA_HEIGHT = 720             # (pixels), Height of the camera image
 CAMERA_FPS = 30                 # (fp/s), Frames per second for the camera
 CAMERA_FILE_FORMAT = "H265"     # File format for the recorded video
 
 # Microphone Macros
-MIC_DEVICE = 15                 # Set after --list-devices. Example: 15. Use None for auto-select.
+MIC_DEVICE = 20                 # Set after --list-devices. Example: 15. Use None for auto-select.
 MIC_SAMPLE_RATE = 384000        # (Hz), Sample rate in Hz.
 MIC_CHANNELS = 1                # (int), Mono recording. Set to 2 for stereo if microphone supports it.
 MIC_FORMAT = "FLAC"             # File format for the recorded audio. Common options: "WAV", "FLAC", "MP3"
@@ -425,7 +425,7 @@ def merge_audio_video(video_path, audio_path):
         return None
 
     stem = Path(audio_path).stem
-    output_path = RECORDINGS_DIR / f"{stem}.mp4"
+    output_path = RECORDINGS_DIR / f"{Path(video_path).stem}.mp4"
 
     command = [
         ffmpeg,
@@ -564,10 +564,13 @@ def run_enabled_peripherals(peripheral_settings):
 
         # Merge audio and video if both features are enabled.
         if merge_enabled and camera_enabled:
-            merge_audio_video(recording_paths["video"], recording_paths["audio"])
-
+            if isinstance(recording_paths["video"], dict):
+                merge_audio_video(recording_paths["video"]["left"], recording_paths["audio"])
+                merge_audio_video(recording_paths["video"]["right"], recording_paths["audio"])
+            else:
+                merge_audio_video(recording_paths["video"], recording_paths["audio"])
         return
-
+    
     # If microphone is off, wait for all worker threads and camera process to finish.
     for worker_thread in worker_threads:
         worker_thread.join()
