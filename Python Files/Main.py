@@ -32,7 +32,7 @@ RECORDINGS_DIR = Path(CUSTOM_RECORDINGS_DIR) if CUSTOM_RECORDINGS_DIR else Path(
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Recording Macros
-DEFAULT_RECORD_TIME = 30.0      # (s), Recording duration
+DEFAULT_RECORD_TIME = 60000.0      # (s), Recording duration
 DEFAULT_MERGE_AV = True         # True exports a merged MP4 when mic and camera are enabled.
 KILL_BUTTON = "k"               # Press this key to stop all peripherals during recording.
 
@@ -45,14 +45,14 @@ SPEAKER_AMPLITUDE = 1           # Amplitude of the sinusodial beep sound. Adjust
 
 # Camera Macros
 CAMERA_IP = "169.254.1.222"     # Set after --list-cameras. Example: "169.254.1.222". Use None for auto-discover.
-CAMERA_VIEW = "stereo"          # Camera view options: "center", "left", "right", "stereo".
+CAMERA_VIEW = "center"          # Camera view options: "center", "left", "right", "stereo".
 CAMERA_WIDTH = 1280             # (pixels), Width of the camera image
 CAMERA_HEIGHT = 720             # (pixels), Height of the camera image
 CAMERA_FPS = 30                 # (fp/s), Frames per second for the camera
 CAMERA_FILE_FORMAT = "H265"     # File format for the recorded video
 
 # Microphone Macros
-MIC_DEVICE = 20                 # Set after --list-devices. Example: 15. Use None for auto-select.
+MIC_DEVICE = 15                 # Set after --list-devices. Example: 15. Use None for auto-select.
 MIC_SAMPLE_RATE = 384000        # (Hz), Sample rate in Hz.
 MIC_CHANNELS = 1                # (int), Mono recording. Set to 2 for stereo if microphone supports it.
 MIC_FORMAT = "FLAC"             # File format for the recorded audio. Common options: "WAV", "FLAC", "MP3"
@@ -60,9 +60,9 @@ MIC_FORMAT = "FLAC"             # File format for the recorded audio. Common opt
 # Motor Macros
 MOTOR_SERIAL_PORT = "COM6"      # Serial port for motor driver. Change in "DEVICE MANAGER"
 MOTOR_BAUD_RATE = 9600          # Baud rate for motor driver communication. DO NOT TOUCH
-MOTOR_STRENGTH = 100            # Raw PWM strength, 30-250.
-MOTOR_ON_TIME = 300             # (ms), Motor ON time
-MOTOR_OFF_TIME = 300            # (ms), Motor OFF time
+MOTOR_STRENGTH = 200            # Raw PWM strength, 50-250.
+MOTOR_ON_TIME = 500             # (ms), Motor ON time
+MOTOR_OFF_TIME = 30000            # (ms), Motor OFF time
 
 ############################################# Helper Functions ####################################################
 Camera.RECORDINGS_DIR = RECORDINGS_DIR

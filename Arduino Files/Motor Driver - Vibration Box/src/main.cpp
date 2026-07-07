@@ -9,8 +9,8 @@
 
 int motorPin = 9;
 int strength = 0; // PWM value, updated from Python with s:[0 or 30-250].
-int onTime = 0;   // Milliseconds, updated from Python with n:[ms].
-int offTime = 0;  // Milliseconds, updated from Python with m:[ms].
+unsigned int onTime = 0;   // Milliseconds, updated from Python with n:[ms].
+unsigned int offTime = 0;  // Milliseconds, updated from Python with m:[ms].
 
 bool hasStrength = false;
 bool hasOnTime = false;
@@ -28,7 +28,7 @@ void handleCommand(String command) {
   }
 
   char type = command.charAt(0);
-  int value = command.substring(separatorIndex + 1).toInt();
+  long int value = command.substring(separatorIndex + 1).toInt();
 
   if (type == 's') {
     value = constrain(value, 0, 250);
@@ -60,7 +60,7 @@ void setup() {
 }
 
 void loop() {
-  // Check for Serial Instructions
+  // Continuously check for serial commands 
   while (Serial.available() > 0) {
     char incomingChar = Serial.read();
 
@@ -78,13 +78,18 @@ void loop() {
     return;
   }
 
+  unsigned long now = millis();
+
   // Execution Loop
   if (strength > 0) {
-    analogWrite(motorPin, strength);
-    delay(onTime);
-    
-    analogWrite(motorPin, 0);
-    delay(offTime);
+    unsigned long cycleTime = onTime + offTime;
+    unsigned long phase = now % cycleTime;
+
+    if (phase < onTime) {
+      analogWrite(motorPin, strength);
+    } else {
+      analogWrite(motorPin, 0);
+    }
   } else {
     analogWrite(motorPin, 0);
   }
