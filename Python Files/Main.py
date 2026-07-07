@@ -31,12 +31,10 @@ CUSTOM_RECORDINGS_DIR = r"C:\Users\uqtverga\Documents\Local Python Dev environme
 RECORDINGS_DIR = Path(CUSTOM_RECORDINGS_DIR) if CUSTOM_RECORDINGS_DIR else Path(__file__).resolve().parent / "recordings"
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
-
 # Recording Macros
-DEFAULT_RECORD_TIME = 30.0      # (s), Recording duration
+DEFAULT_RECORD_TIME = 360.0      # (s), Recording duration
 DEFAULT_MERGE_AV = True         # True exports a merged MP4 when mic and camera are enabled.
 KILL_BUTTON = "k"               # Press this key to stop all peripherals during recording.
-
 
 # Speaker Macros
 SPEAKER_FREQ = 250              # (Hz), Beep Freq
@@ -45,28 +43,25 @@ SPEAKER_OFF = 3.0               # (s), Speaker OFF time
 SPEAKER_SAMPLE_RATE = 44100     # (Hz), Sample rate for audio generation
 SPEAKER_AMPLITUDE = 1           # Amplitude of the sinusodial beep sound. Adjust knob on speaker for real-world volume 
 
-
 # Camera Macros
 CAMERA_IP = "169.254.1.222"     # Set after --list-cameras. Example: "169.254.1.222". Use None for auto-discover.
-CAMERA_VIEW = "center"          # Camera view options: "center", "left", "right", "stereo".
+CAMERA_VIEW = "right"          # Camera view options: "center", "left", "right", "stereo".
 CAMERA_WIDTH = 1280             # (pixels), Width of the camera image
 CAMERA_HEIGHT = 720             # (pixels), Height of the camera image
 CAMERA_FPS = 30                 # (fp/s), Frames per second for the camera
 CAMERA_FILE_FORMAT = "H265"     # File format for the recorded video
 
-
 # Microphone Macros
-MIC_DEVICE = 12                 # Set after --list-devices. Example: 15. Use None for auto-select.
+MIC_DEVICE = 15                 # Set after --list-devices. Example: 15. Use None for auto-select.
 MIC_SAMPLE_RATE = 384000        # (Hz), Sample rate in Hz.
 MIC_CHANNELS = 1                # (int), Mono recording. Set to 2 for stereo if microphone supports it.
 MIC_FORMAT = "FLAC"             # File format for the recorded audio. Common options: "WAV", "FLAC", "MP3"
 
-
 # Motor Macros
 MOTOR_SERIAL_PORT = "COM6"      # Serial port for motor driver. Change in "DEVICE MANAGER"
 MOTOR_BAUD_RATE = 9600          # Baud rate for motor driver communication. DO NOT TOUCH
-MOTOR_STRENGTH = 150            # Raw PWM strength, 30-250.
-MOTOR_ON_TIME = 200             # (ms), Motor ON time
+MOTOR_STRENGTH = 100            # Raw PWM strength, 30-250.
+MOTOR_ON_TIME = 300             # (ms), Motor ON time
 MOTOR_OFF_TIME = 300            # (ms), Motor OFF time
 
 ############################################# Helper Functions ####################################################
@@ -362,7 +357,6 @@ def print_system_info(settings):
     print()
     print_enabled_peripheral_settings(settings)
 
-
 # Records microphone audio for the shared record time
 def record_microphone(record_time, stop_event=None):
     mic_settings = Microphone.load_settings()
@@ -377,7 +371,6 @@ def record_microphone(record_time, stop_event=None):
         mp3=False,
         stop_event=stop_event,
     )
-
 
 # Runs the camera driver with saved JSON settings and Main.py macros; used in the camera child process.
 def run_camera(record_time, stop_event=None):
@@ -431,7 +424,8 @@ def merge_audio_video(video_path, audio_path):
         print("Audio/video merge skipped because the video or audio file was not created.")
         return None
 
-    output_path = RECORDINGS_DIR / f"{get_recording_stem()}.mp4"
+    stem = Path(audio_path).stem
+    output_path = RECORDINGS_DIR / f"{stem}.mp4"
 
     command = [
         ffmpeg,
