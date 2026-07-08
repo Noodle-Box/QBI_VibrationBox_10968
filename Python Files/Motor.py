@@ -25,15 +25,15 @@ from serial.tools import list_ports
 def add_motor_arguments(parser):
     parser.add_argument("--motor", action="store_true", help="Configure or target motor settings.")
     parser.add_argument("--set-strength", type=int, help="With --motor, save raw motor strength, 30-250.")
-    parser.add_argument("--set-on", type=int, help="With --motor, save motor on-time in milliseconds.")
-    parser.add_argument("--set-off", type=int, help="With --motor, save motor off-time in milliseconds.")
+    parser.add_argument("--set-on", type=float, help="With --motor, save motor on-time in seconds.")
+    parser.add_argument("--set-off", type=float, help="With --motor, save motor off-time in seconds.")
     parser.add_argument("--set-port", help="With --motor, save the Arduino serial port.")
     parser.add_argument("--set-baud", type=int, help="With --motor, save the Arduino serial baud rate.")
     parser.add_argument("--motor-port", help="Save the Arduino serial port used by the motor driver.")
     parser.add_argument("--motor-baud", type=int, help="Save the Arduino serial baud rate.")
     parser.add_argument("--motor-strength", type=int, help="Save raw motor strength, 30-250.")
-    parser.add_argument("--motor-on-time", type=int, help="Save motor on-time in milliseconds.")
-    parser.add_argument("--motor-off-time", type=int, help="Save motor off-time in milliseconds.")
+    parser.add_argument("--motor-on-time", type=float, help="Save motor on-time in seconds.")
+    parser.add_argument("--motor-off-time", type=float, help="Save motor off-time in seconds.")
 
 
 # Restricts a numeric value to a minimum and maximum
@@ -60,17 +60,17 @@ def stop_motor(arduino):
     send_command(arduino, "s", 0)
 
 
-# Sets motor on-time over serial
+# Sets motor on-time over serial; value is in seconds, Arduino receives milliseconds.
 def set_on_time(arduino, value):
-    on_time = max(0, int(value))
-    send_command(arduino, "n", on_time)
+    on_time = max(0.0, float(value))
+    send_command(arduino, "n", int(round(on_time * 1000)))
     return on_time
 
 
-# Sets motor off-time over serial
+# Sets motor off-time over serial; value is in seconds, Arduino receives milliseconds.
 def set_off_time(arduino, value):
-    off_time = max(0, int(value))
-    send_command(arduino, "m", off_time)
+    off_time = max(0.0, float(value))
+    send_command(arduino, "m", int(round(off_time * 1000)))
     return off_time
 
 
@@ -99,8 +99,8 @@ def print_menu(strength, on_time, off_time, kill_button, motor_on=True, time_lef
     print()
     print(f"{'p':<3} | {('on' if motor_on else 'off'):<15} | Toggle ON/OFF vibrations without quitting run time")
     print(f"{'s':<3} | {strength:<15} | Vibration strength - strength of motor")
-    print(f"{'n':<3} | {f'{on_time} ms':<15} | Motor on time")
-    print(f"{'m':<3} | {f'{off_time} ms':<15} | Motor off time")
+    print(f"{'n':<3} | {f'{on_time} s':<15} | Motor on time")
+    print(f"{'m':<3} | {f'{off_time} s':<15} | Motor off time")
     if speaker_enabled:
         on_str  = f"{speaker_on} s"  if speaker_on  is not None else "-"
         off_str = f"{speaker_off} s" if speaker_off is not None else "-"
@@ -148,11 +148,11 @@ def apply_motor_command(arduino, user_input, strength, on_time, off_time, motor_
         print("Use commands like: p, s 150, n 200, or m 500")
         return strength, on_time, off_time, motor_on
 
-    # Convert the command value into an integer before sending it to Arduino
+    # Convert the command value to a float (on/off times accept decimals, strength is rounded later)
     try:
-        value = int(parts[1])
+        value = float(parts[1])
     except ValueError:
-        print("Value must be a whole number.")
+        print("Value must be a number.")
         return strength, on_time, off_time, motor_on
 
     # Apply the value to the requested motor setting and save it for --info.

@@ -41,7 +41,7 @@ KILL_BUTTON = "k"               # Press this key to stop all peripherals during 
 # Speaker Macros
 SPEAKER_FREQ = 250              # (Hz), Beep Freq
 SPEAKER_ON = 1.0                # (s), Speaker ON time
-SPEAKER_OFF = 29.0              # (s), Speaker OFF time
+SPEAKER_OFF = 5.0              # (s), Speaker OFF time
 SPEAKER_SAMPLE_RATE = 44100     # (Hz), Sample rate for audio generation
 SPEAKER_AMPLITUDE = 1           # Amplitude of the sinusodial beep sound. Adjust knob on speaker for real-world volume 
 
@@ -63,8 +63,8 @@ MIC_FORMAT = "FLAC"             # File format for the recorded audio. Common opt
 MOTOR_SERIAL_PORT = "COM6"      # Serial port for motor driver. Change in "DEVICE MANAGER"
 MOTOR_BAUD_RATE = 9600          # Baud rate for motor driver communication. DO NOT TOUCH
 MOTOR_STRENGTH = 200            # Raw PWM strength, 50-250.
-MOTOR_ON_TIME = 500             # (ms), Motor ON time
-MOTOR_OFF_TIME = 30000            # (ms), Motor OFF time
+MOTOR_ON_TIME = 0.5             # (s), Motor ON time
+MOTOR_OFF_TIME = 5.0           # (s), Motor OFF time
 
 ############################################# Helper Functions ####################################################
 Camera.RECORDINGS_DIR = RECORDINGS_DIR
@@ -238,8 +238,8 @@ def print_motor_settings():
         f"Serial Port: {motor_settings['serial_port']} \n"
         f"Baud Rate: {motor_settings['baud_rate']} \n"
         f"Strength: {motor_settings['strength']} \n"
-        f"On-Time: {motor_settings['on_time']} ms \n"
-        f"Off-Time: {motor_settings['off_time']} ms"
+        f"On-Time: {motor_settings['on_time']} s \n"
+        f"Off-Time: {motor_settings['off_time']} s"
     )
 
 
@@ -420,11 +420,6 @@ def run_speaker(record_time, stop_event=None, pulse_callback=None, settings_call
     except Exception as exc:
         print(f"Speaker stopped with an error: {exc}")
 
-# Builds the timestamp stem for merged audio/video files; used by merge_audio_video().
-def get_recording_stem():
-    return datetime.now().strftime("Recording_%H%M%S_%d_%m")
-
-
 # Merges camera video and microphone audio into MP4 with ffmpeg; used after camera and mic finish.
 def merge_audio_video(video_path, audio_path):
     ffmpeg = shutil.which("ffmpeg")
@@ -436,7 +431,6 @@ def merge_audio_video(video_path, audio_path):
         print("Audio/video merge skipped because the video or audio file was not created.")
         return None
 
-    stem = Path(audio_path).stem
     output_path = RECORDINGS_DIR / f"{Path(video_path).stem}.mp4"
 
     command = [
@@ -930,9 +924,6 @@ def main():
     if args.set_format is not None:
         microphone_settings_changed = Microphone.set_recording_format(mic_settings, args.set_format) or microphone_settings_changed
 
-    # Reserved for future camera settings changed in Main.py; Camera.py currently handles camera args earlier.
-    camera_settings_changed = False
-
     # Save global peripheral settings after all global changes are applied.
     if peripheral_settings_changed:
         save_peripheral_settings(peripheral_settings)
@@ -951,13 +942,12 @@ def main():
         return
 
     # Print only the changed peripheral settings after targeted configuration commands.
-    if motor_settings_changed or microphone_settings_changed or camera_settings_changed:
+    if motor_settings_changed or microphone_settings_changed:
         print_selected_peripheral_settings(
             show_motor=motor_selected or (motor_settings_changed and not mic_selected),
             show_mic=mic_selected or (microphone_settings_changed and not motor_selected),
-            show_camera=camera_selected or (camera_settings_changed and not motor_selected and not mic_selected),
-            record_time=get_record_time(peripheral_settings),
-        )
+            show_camera=camera_selected,
+            record_time=get_record_time(peripheral_settings))
         return
 
     # Handle standalone microphone recording options and exit.
