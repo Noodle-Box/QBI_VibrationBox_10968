@@ -11,7 +11,7 @@
 import argparse
 import json
 import multiprocessing
-import msvcrt
+import queue
 import shutil
 import subprocess
 import threading
@@ -359,6 +359,34 @@ def print_system_info(settings):
     print()
     print_enabled_peripheral_settings(settings)
 
+# Top-level camera subprocess entry point. Must be top-level (not nested) to be picklable on Windows.
+# Puts the saved video path into result_queue from inside Camera.py's finally block, before
+# DepthAI closes the device — so the result survives a native crash on device shutdown.
+def _run_camera_subprocess(record_time, stop_event, result_queue, ready_event=None):
+    Camera.RECORDINGS_DIR = RECORDINGS_DIR
+    camera_settings = Camera.load_settings()
+    try:
+        Camera.run_camera(
+            width=CAMERA_WIDTH,
+            height=CAMERA_HEIGHT,
+            fps=CAMERA_FPS,
+            duration_seconds=record_time,
+            file_format=CAMERA_FILE_FORMAT,
+            device_ip=camera_settings["device_ip"],
+            record_video=camera_settings["record_video"],
+            view=camera_settings["view"],
+            window_name="OAK-D Camera",
+            stop_event=stop_event,
+            result_queue=result_queue,
+            ready_event=ready_event,
+        )
+    except Exception as exc:
+        print(f"Camera stopped with an error: {exc}")
+        result_queue.put(None)
+        if ready_event is not None:
+            ready_event.set()
+
+
 # Records microphone audio for the shared record time
 def record_microphone(record_time, stop_event=None):
     mic_settings = Microphone.load_settings()
@@ -374,28 +402,8 @@ def record_microphone(record_time, stop_event=None):
         stop_event=stop_event,
     )
 
-# Runs the camera driver with saved JSON settings and Main.py macros; used in the camera child process.
-def run_camera(record_time, stop_event=None):
-    camera_settings = Camera.load_settings()
-    try:
-        return Camera.run_camera(
-            width=CAMERA_WIDTH,
-            height=CAMERA_HEIGHT,
-            fps=CAMERA_FPS,
-            duration_seconds=record_time,
-            file_format=CAMERA_FILE_FORMAT,
-            device_ip=camera_settings["device_ip"],
-            record_video=camera_settings["record_video"],
-            view=camera_settings["view"],
-            window_name="OAK-D Camera",
-            stop_event=stop_event,
-        )
-    except Exception as exc:
-        print(f"Camera stopped with an error: {exc}")
-        return None
-
 # Runs the speaker driver for the shared record time; used by run_enabled_peripherals().
-def run_speaker(record_time, stop_event=None, pulse_callback=None):
+def run_speaker(record_time, stop_event=None, pulse_callback=None, settings_callback=None, command_queue=None):
     try:
         Speaker.run_speaker(
             duration_seconds=record_time,
@@ -406,10 +414,11 @@ def run_speaker(record_time, stop_event=None, pulse_callback=None):
             sample_rate=SPEAKER_SAMPLE_RATE,
             amplitude=SPEAKER_AMPLITUDE,
             pulse_callback=pulse_callback,
+            settings_callback=settings_callback,
+            command_queue=command_queue,
         )
     except Exception as exc:
         print(f"Speaker stopped with an error: {exc}")
-
 
 # Builds the timestamp stem for merged audio/video files; used by merge_audio_video().
 def get_recording_stem():
@@ -461,18 +470,6 @@ def merge_audio_video(video_path, audio_path):
     print("Note: merged MP4 audio is downsampled to 48 kHz. The standalone audio recording keeps the original microphone data.")
     return output_path
 
-# Watches keyboard input for the global kill button when motor is disabled; used by run_enabled_peripherals().
-def watch_for_global_kill(stop_event, done_event, kill_button):
-    while not stop_event.is_set() and not done_event.is_set():
-        if msvcrt.kbhit():
-            char = msvcrt.getwch()
-            if char.lower() == kill_button.lower():
-                stop_event.set()
-                print()
-                print("Kill requested. Stopping all peripherals and processing clipped recordings.")
-                return
-
-
 # Starts enabled peripherals together and coordinates recording, kill, recovery, and merge behavior.
 def run_enabled_peripherals(peripheral_settings):
     # Read enabled states and shared recording options from peripheral_settings.json.
@@ -514,14 +511,39 @@ def run_enabled_peripherals(peripheral_settings):
     def speaker_pulse_callback(event, wall_time, mono_t):
         speaker_pulse_log.append({"event": event, "wall": wall_time, "mono": mono_t})
 
-    # Motor pulse log: each entry is {"event": "ON"|"OFF", "wall": "HH:MM:SS.mmm", "mono": float}
-    pulse_log = []
+    speaker_on_log = [SPEAKER_ON] if speaker_enabled else []
+    speaker_off_log = [SPEAKER_OFF] if speaker_enabled else []
+
+    def speaker_settings_callback(on_time, off_time):
+        speaker_on_log.append(on_time)
+        speaker_off_log.append(off_time)
+
+    # Queue for routing t/y commands from the keyboard thread to the speaker thread.
+    speaker_queue = queue.SimpleQueue()
+
+    # Queue for routing motor commands from the keyboard thread to the motor thread.
+    motor_queue = queue.SimpleQueue()
+
+    # Shared dicts so the keyboard thread can read current values when reprinting the menu.
+    motor_state = {
+        "strength": motor_settings["strength"],
+        "on_time": motor_settings["on_time"],
+        "off_time": motor_settings["off_time"],
+        "motor_on": True,
+    }
+    speaker_state = {
+        "on": SPEAKER_ON,
+        "off": SPEAKER_OFF,
+    }
 
     def motor_log_callback(strength, on_time, off_time):
         motor_strength_log.append(strength)
         motor_on_time_log.append(on_time)
         motor_off_time_log.append(off_time)
         save_live_motor_settings(strength, on_time, off_time)
+
+    # Motor pulse log: each entry is {"event": "ON"|"OFF", "wall": "HH:MM:SS.mmm", "mono": float}
+    pulse_log = []
 
     def pulse_callback(event, wall_time, mono_t):
         pulse_log.append({"event": event, "wall": wall_time, "mono": mono_t})
@@ -534,17 +556,70 @@ def run_enabled_peripherals(peripheral_settings):
         "audio": None,
         "video": None,
     }
+    camera_ready_event = multiprocessing.Event() if camera_enabled else None
 
-    # If motor is off, start a separate keyboard watcher so kill still works.
-    if not motor_enabled:
-        kill_thread = threading.Thread(
-            target=watch_for_global_kill,
-            args=(stop_event, done_event, KILL_BUTTON),
-            daemon=True,
-        )
-        kill_thread.start()
+    # Keyboard thread: reads terminal input, routes motor commands to motor_queue and
+    # speaker t/y commands to speaker_queue. Handles kill for all peripheral combinations.
+    def keyboard_thread_fn():
+        command_buffer = ""
+        end_time_ref = time.monotonic() + record_time
 
-    # Start the motor in a thread so live terminal commands can run with other peripherals.
+        def reprint_menu():
+            Motor.print_menu(
+                motor_state["strength"], motor_state["on_time"], motor_state["off_time"],
+                KILL_BUTTON, motor_state["motor_on"], end_time_ref - time.monotonic(),
+                speaker_enabled, speaker_state["on"], speaker_state["off"],
+            )
+            print("> ", end="", flush=True)
+
+        if motor_enabled:
+            # Wait for the camera to finish connecting before printing the menu so connection
+            # messages appear first. Falls through after 60 s if the camera never signals.
+            if camera_ready_event is not None:
+                camera_ready_event.wait(timeout=60)
+            reprint_menu()
+
+        while not stop_event.is_set() and not done_event.is_set():
+            command_buffer, command = Motor.read_nonblocking_command(command_buffer, stop_event, KILL_BUTTON)
+
+            if command is not None:
+                if command == "__kill__":
+                    break
+
+                parts = command.strip().split()
+                if parts:
+                    cmd = parts[0].lower()
+                    if cmd in ("t", "y"):
+                        if speaker_enabled and len(parts) == 2:
+                            try:
+                                value = float(parts[1])
+                                Speaker.send_to_speaker(speaker_queue, cmd, value)
+                                # Update speaker_state immediately so the menu reflects the new value.
+                                if cmd == "t":
+                                    speaker_state["on"] = max(0.1, value)
+                                else:
+                                    speaker_state["off"] = max(0.1, value)
+                            except ValueError:
+                                print("Value must be a number.")
+                        elif not speaker_enabled:
+                            print("Speaker is not enabled.")
+                        else:
+                            print("Use: t <seconds> or y <seconds>")
+                    elif motor_enabled:
+                        motor_queue.put(command)
+                    else:
+                        print("Motor is not enabled.")
+
+                if motor_enabled:
+                    time.sleep(0.1)  # Let the motor thread process the command before reprinting.
+                    reprint_menu()
+
+            time.sleep(0.05)
+
+    keyboard_thread = threading.Thread(target=keyboard_thread_fn, daemon=True)
+    keyboard_thread.start()
+
+    # Start the motor in a thread so it can drive the Arduino in parallel with other peripherals.
     if motor_enabled:
         motor_thread = threading.Thread(
             target=Motor.run_motor_driver,
@@ -559,24 +634,30 @@ def run_enabled_peripherals(peripheral_settings):
                 "kill_button": KILL_BUTTON,
                 "settings_callback": motor_log_callback,
                 "pulse_callback": pulse_callback,
+                "motor_queue": motor_queue,
+                "motor_state": motor_state,
             },
         )
         motor_thread.start()
         worker_threads.append(motor_thread)
 
-    # Start the camera in a thread for live preview window support on Windows.
-    camera_thread = None
-    camera_video_path = [None]
+    # Start the camera in a subprocess so a DepthAI native crash on device-close doesn't kill the main process.
+    # The video path is returned via result_queue from inside Camera.py's finally block, before the crash fires.
+    # camera_ready_event is set by Camera.py after pipeline.start() so the keyboard menu waits until then.
+    camera_proc = None
+    camera_result_queue = multiprocessing.Queue()
     if camera_enabled:
-        def camera_thread_fn():
-            camera_video_path[0] = run_camera(record_time, stop_event)
-        camera_thread = threading.Thread(target=camera_thread_fn, daemon=True)
-        camera_thread.start()
-        worker_threads.append(camera_thread)
+        camera_proc = multiprocessing.Process(
+            target=_run_camera_subprocess,
+            args=(record_time, stop_event, camera_result_queue),
+            kwargs={"ready_event": camera_ready_event},
+            daemon=True,
+        )
+        camera_proc.start()
 
     # Start speaker beeps in a thread so audio output runs during the shared record time.
     if speaker_enabled:
-        speaker_thread = threading.Thread(target=run_speaker, args=(record_time, stop_event, speaker_pulse_callback))
+        speaker_thread = threading.Thread(target=run_speaker, args=(record_time, stop_event, speaker_pulse_callback, speaker_settings_callback, speaker_queue))
         speaker_thread.start()
         worker_threads.append(speaker_thread)
 
@@ -592,9 +673,15 @@ def run_enabled_peripherals(peripheral_settings):
         for worker_thread in worker_threads:
             worker_thread.join()
 
-        # Collect the saved video path from the camera thread.
+        # Collect the saved video path from the camera subprocess result queue.
+        # The path is enqueued inside Camera.py's finally block before DepthAI closes the device,
+        # so it arrives even if the subprocess crashes during device shutdown.
         if camera_enabled:
-            recording_paths["video"] = camera_video_path[0]
+            try:
+                recording_paths["video"] = camera_result_queue.get(timeout=15)
+            except Exception:
+                recording_paths["video"] = None
+                print("Camera result not received; video path unavailable.")
 
         done_event.set()
 
@@ -610,33 +697,40 @@ def run_enabled_peripherals(peripheral_settings):
                 if mp4_path:
                     mp4_paths = [mp4_path]
 
-        _write_summary(
+        write_summary(
             run_timestamp, actual_run_time, run_start_time, peripheral_settings,
-            camera_settings, speaker_pulse_log, motor_strength_log, motor_on_time_log, motor_off_time_log,
+            camera_settings, speaker_pulse_log, speaker_on_log, speaker_off_log,
+            motor_strength_log, motor_on_time_log, motor_off_time_log,
             pulse_log, recording_paths, mp4_paths,
         )
         return
 
-    # If microphone is off, wait for all worker threads and camera process to finish.
+    # If microphone is off, wait for all worker threads to finish.
     for worker_thread in worker_threads:
         worker_thread.join()
 
     if camera_enabled:
-        recording_paths["video"] = camera_video_path[0]
+        try:
+            recording_paths["video"] = camera_result_queue.get(timeout=15)
+        except Exception:
+            recording_paths["video"] = None
+            print("Camera result not received; video path unavailable.")
 
     done_event.set()
     actual_run_time = round(time.monotonic() - run_start_time, 1)
 
-    _write_summary(
+    write_summary(
         run_timestamp, actual_run_time, run_start_time, peripheral_settings,
-        camera_settings, speaker_pulse_log, motor_strength_log, motor_on_time_log, motor_off_time_log,
+        camera_settings, speaker_pulse_log, speaker_on_log, speaker_off_log,
+        motor_strength_log, motor_on_time_log, motor_off_time_log,
         pulse_log, recording_paths, [],
     )
 
 
 # Detects output files and appends one row to the Summary Sheet.
-def _write_summary(run_timestamp, actual_run_time, run_start_time, peripheral_settings, camera_settings,
-                   speaker_pulse_log, motor_strength_log, motor_on_time_log, motor_off_time_log,
+def write_summary(run_timestamp, actual_run_time, run_start_time, peripheral_settings, camera_settings,
+                   speaker_pulse_log, speaker_on_log, speaker_off_log,
+                   motor_strength_log, motor_on_time_log, motor_off_time_log,
                    motor_pulse_log, recording_paths, mp4_paths):
     audio_path = recording_paths["audio"]
     video_path = recording_paths["video"]
@@ -651,6 +745,7 @@ def _write_summary(run_timestamp, actual_run_time, run_start_time, peripheral_se
     # Extract ON-transition timestamps; elapsed is relative to run_start_time.
     speaker_pulse_wall = [e["wall"] for e in speaker_pulse_log if e["event"] == "ON"]
     speaker_pulse_elapsed = [round(e["mono"] - run_start_time, 2) for e in speaker_pulse_log if e["event"] == "ON"]
+    
     motor_pulse_wall = [e["wall"] for e in motor_pulse_log if e["event"] == "ON"]
     motor_pulse_elapsed = [round(e["mono"] - run_start_time, 2) for e in motor_pulse_log if e["event"] == "ON"]
 
@@ -661,6 +756,8 @@ def _write_summary(run_timestamp, actual_run_time, run_start_time, peripheral_se
         "speaker_freq": SPEAKER_FREQ,
         "speaker_on": SPEAKER_ON,
         "speaker_off": SPEAKER_OFF,
+        "speaker_on_log": speaker_on_log,
+        "speaker_off_log": speaker_off_log,
         "speaker_pulse_wall": speaker_pulse_wall,
         "speaker_pulse_elapsed": speaker_pulse_elapsed,
         "camera_enabled": peripheral_settings["camera_enabled"],

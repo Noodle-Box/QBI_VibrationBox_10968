@@ -217,7 +217,7 @@ def get_stereo_frames(queues):
     return left_frame, right_frame
 
 # Runs live preview and optional recording for the configured OAK camera
-def run_camera(width, height, fps, duration_seconds, file_format, device_ip, record_video, view, window_name, stop_event):
+def run_camera(width, height, fps, duration_seconds, file_format, device_ip, record_video, view, window_name, stop_event, result_queue=None, ready_event=None):
     
     # Build directly as a h265 file for immediate writing
     recording_stem = get_recording_stem()
@@ -275,6 +275,8 @@ def run_camera(width, height, fps, duration_seconds, file_format, device_ip, rec
         
         # Start the DepthAI pipeline and record the start time for duration tracking
         pipeline.start()
+        if ready_event is not None:
+            ready_event.set()
         start_time = time.monotonic()
 
         try:
@@ -331,6 +333,10 @@ def run_camera(width, height, fps, duration_seconds, file_format, device_ip, rec
                     cv2.destroyWindow(window_name)
             except cv2.error:
                 pass
+
+            # Signal the saved path before the with-block exits so the result survives a DepthAI shutdown crash.
+            if result_queue is not None:
+                result_queue.put(saved_video_path if record_video else None)
 
     cv2.destroyAllWindows()
     if record_video:
