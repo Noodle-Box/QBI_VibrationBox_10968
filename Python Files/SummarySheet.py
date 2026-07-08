@@ -12,7 +12,7 @@ import openpyxl
 
 ################################################### Configuration #####################################################
 
-SUMMARY_SHEET_PATH = Path(__file__).resolve().parent / "Summary Sheet.xlsx"
+SUMMARY_SHEET_PATH = Path(__file__).resolve().parent.parent / "Summary Sheet.xlsx"
 
 HEADERS = [
     "Timestamp",

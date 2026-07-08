@@ -34,7 +34,7 @@ RECORDINGS_DIR = Path(CUSTOM_RECORDINGS_DIR) if CUSTOM_RECORDINGS_DIR else Path(
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Recording Macros
-DEFAULT_RECORD_TIME = 60.0      # (s), Recording duration
+DEFAULT_RECORD_TIME = 120.0      # (s), Recording duration
 DEFAULT_MERGE_AV = True         # True exports a merged MP4 when mic and camera are enabled.
 KILL_BUTTON = "k"               # Press this key to stop all peripherals during recording.
 
@@ -62,9 +62,9 @@ MIC_FORMAT = "FLAC"             # File format for the recorded audio. Common opt
 # Motor Macros
 MOTOR_SERIAL_PORT = "COM6"      # Serial port for motor driver. Change in "DEVICE MANAGER"
 MOTOR_BAUD_RATE = 9600          # Baud rate for motor driver communication. DO NOT TOUCH
-MOTOR_STRENGTH = 200            # Raw PWM strength, 50-250.
+MOTOR_STRENGTH = 150            # Raw PWM strength, 50-250.
 MOTOR_ON_TIME = 200             # (ms), Motor ON time
-MOTOR_OFF_TIME = 3000            # (ms), Motor OFF time
+MOTOR_OFF_TIME = 10000            # (ms), Motor OFF time
 
 ############################################# Helper Functions ####################################################
 Camera.RECORDINGS_DIR = RECORDINGS_DIR

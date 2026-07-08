@@ -49,7 +49,13 @@ share/python-wheels/
 *.egg
 
 # ==========================================
-# 3. Advisor Reference Files
+# 3. Summary Sheet
+# ==========================================
+# Generated run log — machine-local, not part of source
+Summary Sheet.xlsx
+
+# ==========================================
+# 4. Advisor Reference Files
 # ==========================================
 # Dylan's reference implementation and environment — not part of the project source
 Dylan Files/
