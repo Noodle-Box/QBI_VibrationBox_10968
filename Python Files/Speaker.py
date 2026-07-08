@@ -8,6 +8,7 @@
 
 ############################################ Standard Library Imports ################################################
 import time
+from datetime import datetime
 import numpy as np
 import sounddevice as sd
 
@@ -45,7 +46,7 @@ def wait_until_next_beep(interval_seconds, beep_started_at, stop_event=None):
 
 
 # Main Speaker Function
-def run_speaker(duration_seconds, stop_event, frequency_hz, beep_duration_seconds, interval_seconds, sample_rate, amplitude):
+def run_speaker(duration_seconds, stop_event, frequency_hz, beep_duration_seconds, interval_seconds, sample_rate, amplitude, pulse_callback=None):
 
     tone = generate_tone(frequency_hz, beep_duration_seconds, sample_rate, amplitude)
     end_time = time.monotonic() + duration_seconds if duration_seconds is not None else None
@@ -58,6 +59,8 @@ def run_speaker(duration_seconds, stop_event, frequency_hz, beep_duration_second
             break
 
         beep_started_at = time.monotonic()
+        if pulse_callback is not None:
+            pulse_callback("ON", datetime.now().strftime("%H:%M:%S.%f")[:-3], beep_started_at)
         play_tone(tone, sample_rate, stop_event)
 
         if end_time is not None and time.monotonic() >= end_time:

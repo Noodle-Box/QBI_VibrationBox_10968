@@ -34,14 +34,14 @@ RECORDINGS_DIR = Path(CUSTOM_RECORDINGS_DIR) if CUSTOM_RECORDINGS_DIR else Path(
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Recording Macros
-DEFAULT_RECORD_TIME = 30.0      # (s), Recording duration
+DEFAULT_RECORD_TIME = 60.0      # (s), Recording duration
 DEFAULT_MERGE_AV = True         # True exports a merged MP4 when mic and camera are enabled.
 KILL_BUTTON = "k"               # Press this key to stop all peripherals during recording.
 
 # Speaker Macros
 SPEAKER_FREQ = 250              # (Hz), Beep Freq
 SPEAKER_ON = 1.0                # (s), Speaker ON time
-SPEAKER_OFF = 3.0               # (s), Speaker OFF time
+SPEAKER_OFF = 19.0              # (s), Speaker OFF time
 SPEAKER_SAMPLE_RATE = 44100     # (Hz), Sample rate for audio generation
 SPEAKER_AMPLITUDE = 1           # Amplitude of the sinusodial beep sound. Adjust knob on speaker for real-world volume 
 
@@ -64,7 +64,7 @@ MOTOR_SERIAL_PORT = "COM6"      # Serial port for motor driver. Change in "DEVIC
 MOTOR_BAUD_RATE = 9600          # Baud rate for motor driver communication. DO NOT TOUCH
 MOTOR_STRENGTH = 200            # Raw PWM strength, 50-250.
 MOTOR_ON_TIME = 200             # (ms), Motor ON time
-MOTOR_OFF_TIME = 300            # (ms), Motor OFF time
+MOTOR_OFF_TIME = 3000            # (ms), Motor OFF time
 
 ############################################# Helper Functions ####################################################
 Camera.RECORDINGS_DIR = RECORDINGS_DIR
@@ -395,7 +395,7 @@ def run_camera(record_time, stop_event=None):
         return None
 
 # Runs the speaker driver for the shared record time; used by run_enabled_peripherals().
-def run_speaker(record_time, stop_event=None):
+def run_speaker(record_time, stop_event=None, pulse_callback=None):
     try:
         Speaker.run_speaker(
             duration_seconds=record_time,
@@ -405,6 +405,7 @@ def run_speaker(record_time, stop_event=None):
             interval_seconds=SPEAKER_OFF,
             sample_rate=SPEAKER_SAMPLE_RATE,
             amplitude=SPEAKER_AMPLITUDE,
+            pulse_callback=pulse_callback,
         )
     except Exception as exc:
         print(f"Speaker stopped with an error: {exc}")
@@ -507,11 +508,23 @@ def run_enabled_peripherals(peripheral_settings):
     motor_on_time_log = [motor_settings["on_time"]] if motor_enabled else []
     motor_off_time_log = [motor_settings["off_time"]] if motor_enabled else []
 
+    # Speaker pulse log: each entry is {"event": "ON", "wall": "HH:MM:SS.mmm", "mono": float}
+    speaker_pulse_log = []
+
+    def speaker_pulse_callback(event, wall_time, mono_t):
+        speaker_pulse_log.append({"event": event, "wall": wall_time, "mono": mono_t})
+
+    # Motor pulse log: each entry is {"event": "ON"|"OFF", "wall": "HH:MM:SS.mmm", "mono": float}
+    pulse_log = []
+
     def motor_log_callback(strength, on_time, off_time):
         motor_strength_log.append(strength)
         motor_on_time_log.append(on_time)
         motor_off_time_log.append(off_time)
         save_live_motor_settings(strength, on_time, off_time)
+
+    def pulse_callback(event, wall_time, mono_t):
+        pulse_log.append({"event": event, "wall": wall_time, "mono": mono_t})
 
     # Create shared runtime state for threads, camera process, and output paths.
     worker_threads = []
@@ -545,6 +558,7 @@ def run_enabled_peripherals(peripheral_settings):
                 "stop_event": stop_event,
                 "kill_button": KILL_BUTTON,
                 "settings_callback": motor_log_callback,
+                "pulse_callback": pulse_callback,
             },
         )
         motor_thread.start()
@@ -562,7 +576,7 @@ def run_enabled_peripherals(peripheral_settings):
 
     # Start speaker beeps in a thread so audio output runs during the shared record time.
     if speaker_enabled:
-        speaker_thread = threading.Thread(target=run_speaker, args=(record_time, stop_event))
+        speaker_thread = threading.Thread(target=run_speaker, args=(record_time, stop_event, speaker_pulse_callback))
         speaker_thread.start()
         worker_threads.append(speaker_thread)
 
@@ -597,9 +611,9 @@ def run_enabled_peripherals(peripheral_settings):
                     mp4_paths = [mp4_path]
 
         _write_summary(
-            run_timestamp, actual_run_time, peripheral_settings,
-            camera_settings, motor_strength_log, motor_on_time_log, motor_off_time_log,
-            recording_paths, mp4_paths,
+            run_timestamp, actual_run_time, run_start_time, peripheral_settings,
+            camera_settings, speaker_pulse_log, motor_strength_log, motor_on_time_log, motor_off_time_log,
+            pulse_log, recording_paths, mp4_paths,
         )
         return
 
@@ -614,16 +628,16 @@ def run_enabled_peripherals(peripheral_settings):
     actual_run_time = round(time.monotonic() - run_start_time, 1)
 
     _write_summary(
-        run_timestamp, actual_run_time, peripheral_settings,
-        camera_settings, motor_strength_log, motor_on_time_log, motor_off_time_log,
-        recording_paths, [],
+        run_timestamp, actual_run_time, run_start_time, peripheral_settings,
+        camera_settings, speaker_pulse_log, motor_strength_log, motor_on_time_log, motor_off_time_log,
+        pulse_log, recording_paths, [],
     )
 
 
 # Detects output files and appends one row to the Summary Sheet.
-def _write_summary(run_timestamp, actual_run_time, peripheral_settings, camera_settings,
-                   motor_strength_log, motor_on_time_log, motor_off_time_log,
-                   recording_paths, mp4_paths):
+def _write_summary(run_timestamp, actual_run_time, run_start_time, peripheral_settings, camera_settings,
+                   speaker_pulse_log, motor_strength_log, motor_on_time_log, motor_off_time_log,
+                   motor_pulse_log, recording_paths, mp4_paths):
     audio_path = recording_paths["audio"]
     video_path = recording_paths["video"]
 
@@ -634,6 +648,12 @@ def _write_summary(run_timestamp, actual_run_time, peripheral_settings, camera_s
         h265_out = video_path is not None and Path(video_path).exists()
     mp4_out = len(mp4_paths) > 0
 
+    # Extract ON-transition timestamps; elapsed is relative to run_start_time.
+    speaker_pulse_wall = [e["wall"] for e in speaker_pulse_log if e["event"] == "ON"]
+    speaker_pulse_elapsed = [round(e["mono"] - run_start_time, 2) for e in speaker_pulse_log if e["event"] == "ON"]
+    motor_pulse_wall = [e["wall"] for e in motor_pulse_log if e["event"] == "ON"]
+    motor_pulse_elapsed = [round(e["mono"] - run_start_time, 2) for e in motor_pulse_log if e["event"] == "ON"]
+
     SummarySheet.append_run({
         "timestamp": run_timestamp,
         "recording_time": actual_run_time,
@@ -641,6 +661,8 @@ def _write_summary(run_timestamp, actual_run_time, peripheral_settings, camera_s
         "speaker_freq": SPEAKER_FREQ,
         "speaker_on": SPEAKER_ON,
         "speaker_off": SPEAKER_OFF,
+        "speaker_pulse_wall": speaker_pulse_wall,
+        "speaker_pulse_elapsed": speaker_pulse_elapsed,
         "camera_enabled": peripheral_settings["camera_enabled"],
         "camera_view": camera_settings["view"],
         "mic_enabled": peripheral_settings["mic_enabled"],
@@ -648,6 +670,8 @@ def _write_summary(run_timestamp, actual_run_time, peripheral_settings, camera_s
         "motor_strength_log": motor_strength_log,
         "motor_on_time_log": motor_on_time_log,
         "motor_off_time_log": motor_off_time_log,
+        "motor_pulse_wall": motor_pulse_wall,
+        "motor_pulse_elapsed": motor_pulse_elapsed,
         "flac_out": flac_out,
         "h265_out": h265_out,
         "mp4_out": mp4_out,

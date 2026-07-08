@@ -21,6 +21,8 @@ HEADERS = [
     "Speaker Freq (Hz)",
     "Speaker On Time (s)",
     "Speaker Off Time (s)",
+    "Speaker Pulses (Real Time)",
+    "Speaker Pulses (In Simulation time)",
     "Camera",
     "View Mode",
     "Microphone",
@@ -28,6 +30,8 @@ HEADERS = [
     "Motor Strength",
     "Motor On Time (ms)",
     "Motor Off Time (ms)",
+    "Motor Pulses (Real Time)",
+    "Motor Pulses (In Simulation time)",
     "FLAC Out",
     "h265 Out",
     "MP4 Out",
@@ -49,9 +53,9 @@ def ensure_summary_sheet(path=SUMMARY_SHEET_PATH):
 
 # Appends one row to the Summary Sheet for the completed run.
 # data keys: timestamp, recording_time, speaker_enabled, speaker_freq, speaker_on, speaker_off,
-#             camera_enabled, camera_view, mic_enabled, motor_enabled,
-#             motor_strength_log, motor_on_time_log, motor_off_time_log,
-#             flac_out, h265_out, mp4_out
+#             speaker_pulse_wall, speaker_pulse_elapsed, camera_enabled, camera_view, mic_enabled,
+#             motor_enabled, motor_strength_log, motor_on_time_log, motor_off_time_log,
+#             motor_pulse_wall, motor_pulse_elapsed, flac_out, h265_out, mp4_out
 def append_run(data, path=SUMMARY_SHEET_PATH):
     ensure_summary_sheet(path)
     wb = openpyxl.load_workbook(path)
@@ -67,6 +71,8 @@ def append_run(data, path=SUMMARY_SHEET_PATH):
         data.get("speaker_freq", ""),
         data.get("speaker_on", ""),
         data.get("speaker_off", ""),
+        log_str(data.get("speaker_pulse_wall", [])),
+        log_str(data.get("speaker_pulse_elapsed", [])),
         "ON" if data.get("camera_enabled") else "OFF",
         data.get("camera_view", ""),
         "ON" if data.get("mic_enabled") else "OFF",
@@ -74,6 +80,8 @@ def append_run(data, path=SUMMARY_SHEET_PATH):
         log_str(data.get("motor_strength_log", [])),
         log_str(data.get("motor_on_time_log", [])),
         log_str(data.get("motor_off_time_log", [])),
+        log_str(data.get("motor_pulse_wall", [])),
+        log_str(data.get("motor_pulse_elapsed", [])),
         "TRUE" if data.get("flac_out") else "FALSE",
         "TRUE" if data.get("h265_out") else "FALSE",
         "TRUE" if data.get("mp4_out") else "FALSE",

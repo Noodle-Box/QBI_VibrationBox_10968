@@ -14,6 +14,7 @@
 ############################################ Standard Library Imports ################################################
 import msvcrt
 import time
+from datetime import datetime
 import serial
 from serial.tools import list_ports
 
@@ -233,8 +234,20 @@ def run_manual_motor_loop(arduino, strength, on_time, off_time, kill_button, set
         )
 
 
+# Drains serial lines from Arduino and fires pulse_callback for P:ON / P:OFF events.
+def drain_serial_pulses(arduino, pulse_callback):
+    while arduino.in_waiting > 0:
+        try:
+            line = arduino.readline().decode("utf-8", errors="ignore").strip()
+        except Exception:
+            break
+        if line.startswith("P:") and pulse_callback is not None:
+            event = line[2:]
+            pulse_callback(event, datetime.now().strftime("%H:%M:%S.%f")[:-3], time.monotonic())
+
+
 # Runs the motor with live terminal commands for set duration
-def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds, stop_event, kill_button, settings_callback=None):
+def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds, stop_event, kill_button, settings_callback=None, pulse_callback=None):
 
     # Initialize loop state and calculate the fixed end time.
     motor_on = True
@@ -253,6 +266,9 @@ def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds,
             killed = True
             break
 
+        # Drain any pulse event lines the Arduino sent back this tick
+        drain_serial_pulses(arduino, pulse_callback)
+
         # Poll terminal input without pausing motor timing
         command_buffer, command = read_nonblocking_command(command_buffer, stop_event, kill_button)
 
@@ -269,6 +285,9 @@ def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds,
 
         time.sleep(0.05)
 
+    # Drain any remaining pulse events before the loop exits
+    drain_serial_pulses(arduino, pulse_callback)
+
     # Always stop motor output when the timed loop exits
     print()
     stop_motor(arduino)
@@ -279,7 +298,7 @@ def run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds,
 
 
 # Main Motor Driver function
-def run_motor_driver(serial_port, baud_rate, strength, on_time, off_time, kill_button, duration_seconds=None, stop_event=None, settings_callback=None):
+def run_motor_driver(serial_port, baud_rate, strength, on_time, off_time, kill_button, duration_seconds=None, stop_event=None, settings_callback=None, pulse_callback=None):
     try:
         # Attempt to open configured serial port and send initial settings
         with serial.Serial(serial_port, baud_rate, timeout=1) as arduino:
@@ -289,7 +308,7 @@ def run_motor_driver(serial_port, baud_rate, strength, on_time, off_time, kill_b
             if duration_seconds is None:
                 run_manual_motor_loop(arduino, strength, on_time, off_time, kill_button, settings_callback)
             else:
-                run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds, stop_event, kill_button, settings_callback)
+                run_timed_motor_loop(arduino, strength, on_time, off_time, duration_seconds, stop_event, kill_button, settings_callback, pulse_callback)
     except serial.SerialException as exc:
         print(f"Could not open {serial_port}: {exc}")
         print()

@@ -15,6 +15,7 @@ unsigned int offTime = 0;  // Milliseconds, updated from Python with m:[ms].
 bool hasStrength = false;
 bool hasOnTime = false;
 bool hasOffTime = false;
+bool motorWasOn = false;
 String serialBuffer = "";
 
 void handleCommand(String command) {
@@ -84,13 +85,20 @@ void loop() {
   if (strength > 0) {
     unsigned long cycleTime = onTime + offTime;
     unsigned long phase = now % cycleTime;
+    bool motorIsOn = (phase < onTime);
 
-    if (phase < onTime) {
-      analogWrite(motorPin, strength);
-    } else {
-      analogWrite(motorPin, 0);
+    if (motorIsOn && !motorWasOn) {
+      Serial.println("P:ON");
+    } else if (!motorIsOn && motorWasOn) {
+      Serial.println("P:OFF");
     }
+    motorWasOn = motorIsOn;
+    analogWrite(motorPin, motorIsOn ? strength : 0);
   } else {
+    if (motorWasOn) {
+      Serial.println("P:OFF");
+    }
+    motorWasOn = false;
     analogWrite(motorPin, 0);
   }
 }
