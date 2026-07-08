@@ -15,6 +15,7 @@ import msvcrt
 import shutil
 import subprocess
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -23,6 +24,7 @@ import Camera
 import Microphone
 import Motor
 import Speaker
+import SummarySheet
 
 ####################################### Peripheral Settings: CHANGE THESE AS NEEDED #########################################
 
@@ -32,7 +34,7 @@ RECORDINGS_DIR = Path(CUSTOM_RECORDINGS_DIR) if CUSTOM_RECORDINGS_DIR else Path(
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Recording Macros
-DEFAULT_RECORD_TIME = 60000.0      # (s), Recording duration
+DEFAULT_RECORD_TIME = 30.0      # (s), Recording duration
 DEFAULT_MERGE_AV = True         # True exports a merged MP4 when mic and camera are enabled.
 KILL_BUTTON = "k"               # Press this key to stop all peripherals during recording.
 
@@ -52,7 +54,7 @@ CAMERA_FPS = 30                 # (fp/s), Frames per second for the camera
 CAMERA_FILE_FORMAT = "H265"     # File format for the recorded video
 
 # Microphone Macros
-MIC_DEVICE = 15                 # Set after --list-devices. Example: 15. Use None for auto-select.
+MIC_DEVICE = 20                 # Set after --list-devices. Example: 15. Use None for auto-select.
 MIC_SAMPLE_RATE = 384000        # (Hz), Sample rate in Hz.
 MIC_CHANNELS = 1                # (int), Mono recording. Set to 2 for stereo if microphone supports it.
 MIC_FORMAT = "FLAC"             # File format for the recorded audio. Common options: "WAV", "FLAC", "MP3"
@@ -61,8 +63,8 @@ MIC_FORMAT = "FLAC"             # File format for the recorded audio. Common opt
 MOTOR_SERIAL_PORT = "COM6"      # Serial port for motor driver. Change in "DEVICE MANAGER"
 MOTOR_BAUD_RATE = 9600          # Baud rate for motor driver communication. DO NOT TOUCH
 MOTOR_STRENGTH = 200            # Raw PWM strength, 50-250.
-MOTOR_ON_TIME = 500             # (ms), Motor ON time
-MOTOR_OFF_TIME = 30000            # (ms), Motor OFF time
+MOTOR_ON_TIME = 200             # (ms), Motor ON time
+MOTOR_OFF_TIME = 300            # (ms), Motor OFF time
 
 ############################################# Helper Functions ####################################################
 Camera.RECORDINGS_DIR = RECORDINGS_DIR
@@ -495,6 +497,22 @@ def run_enabled_peripherals(peripheral_settings):
         if not mic_ready:
             return
 
+    # Snapshot run metadata at the very start before any threads launch.
+    run_timestamp = datetime.now().strftime("%H%M%S_%d_%m")
+    camera_settings = Camera.load_settings()
+    motor_settings = load_motor_settings()
+
+    # Motor value logs: initialised with starting values so the first entry always reflects run start.
+    motor_strength_log = [motor_settings["strength"]] if motor_enabled else []
+    motor_on_time_log = [motor_settings["on_time"]] if motor_enabled else []
+    motor_off_time_log = [motor_settings["off_time"]] if motor_enabled else []
+
+    def motor_log_callback(strength, on_time, off_time):
+        motor_strength_log.append(strength)
+        motor_on_time_log.append(on_time)
+        motor_off_time_log.append(off_time)
+        save_live_motor_settings(strength, on_time, off_time)
+
     # Create shared runtime state for threads, camera process, and output paths.
     worker_threads = []
     stop_event = multiprocessing.Event()
@@ -515,7 +533,6 @@ def run_enabled_peripherals(peripheral_settings):
 
     # Start the motor in a thread so live terminal commands can run with other peripherals.
     if motor_enabled:
-        motor_settings = load_motor_settings()
         motor_thread = threading.Thread(
             target=Motor.run_motor_driver,
             kwargs={
@@ -527,7 +544,7 @@ def run_enabled_peripherals(peripheral_settings):
                 "duration_seconds": record_time,
                 "stop_event": stop_event,
                 "kill_button": KILL_BUTTON,
-                "settings_callback": save_live_motor_settings,
+                "settings_callback": motor_log_callback,
             },
         )
         motor_thread.start()
@@ -549,9 +566,14 @@ def run_enabled_peripherals(peripheral_settings):
         speaker_thread.start()
         worker_threads.append(speaker_thread)
 
+    # Timer starts once all threads are launched.
+    run_start_time = time.monotonic()
+
     # Use microphone recording as the blocking timer when the mic is enabled.
     if mic_enabled:
         recording_paths["audio"] = record_microphone(record_time, stop_event)
+        actual_run_time = round(time.monotonic() - run_start_time, 1)
+
         # Wait for motor and speaker threads to finish after microphone recording ends.
         for worker_thread in worker_threads:
             worker_thread.join()
@@ -559,18 +581,28 @@ def run_enabled_peripherals(peripheral_settings):
         # Collect the saved video path from the camera thread.
         if camera_enabled:
             recording_paths["video"] = camera_video_path[0]
-            
+
         done_event.set()
 
         # Merge audio and video if both features are enabled.
+        mp4_paths = []
         if merge_enabled and camera_enabled:
             if isinstance(recording_paths["video"], dict):
-                merge_audio_video(recording_paths["video"]["left"], recording_paths["audio"])
-                merge_audio_video(recording_paths["video"]["right"], recording_paths["audio"])
+                mp4_left = merge_audio_video(recording_paths["video"]["left"], recording_paths["audio"])
+                mp4_right = merge_audio_video(recording_paths["video"]["right"], recording_paths["audio"])
+                mp4_paths = [p for p in [mp4_left, mp4_right] if p]
             else:
-                merge_audio_video(recording_paths["video"], recording_paths["audio"])
+                mp4_path = merge_audio_video(recording_paths["video"], recording_paths["audio"])
+                if mp4_path:
+                    mp4_paths = [mp4_path]
+
+        _write_summary(
+            run_timestamp, actual_run_time, peripheral_settings,
+            camera_settings, motor_strength_log, motor_on_time_log, motor_off_time_log,
+            recording_paths, mp4_paths,
+        )
         return
-    
+
     # If microphone is off, wait for all worker threads and camera process to finish.
     for worker_thread in worker_threads:
         worker_thread.join()
@@ -579,6 +611,47 @@ def run_enabled_peripherals(peripheral_settings):
         recording_paths["video"] = camera_video_path[0]
 
     done_event.set()
+    actual_run_time = round(time.monotonic() - run_start_time, 1)
+
+    _write_summary(
+        run_timestamp, actual_run_time, peripheral_settings,
+        camera_settings, motor_strength_log, motor_on_time_log, motor_off_time_log,
+        recording_paths, [],
+    )
+
+
+# Detects output files and appends one row to the Summary Sheet.
+def _write_summary(run_timestamp, actual_run_time, peripheral_settings, camera_settings,
+                   motor_strength_log, motor_on_time_log, motor_off_time_log,
+                   recording_paths, mp4_paths):
+    audio_path = recording_paths["audio"]
+    video_path = recording_paths["video"]
+
+    flac_out = audio_path is not None and Path(audio_path).exists()
+    if isinstance(video_path, dict):
+        h265_out = any(Path(p).exists() for p in video_path.values())
+    else:
+        h265_out = video_path is not None and Path(video_path).exists()
+    mp4_out = len(mp4_paths) > 0
+
+    SummarySheet.append_run({
+        "timestamp": run_timestamp,
+        "recording_time": actual_run_time,
+        "speaker_enabled": peripheral_settings["speaker_enabled"],
+        "speaker_freq": SPEAKER_FREQ,
+        "speaker_on": SPEAKER_ON,
+        "speaker_off": SPEAKER_OFF,
+        "camera_enabled": peripheral_settings["camera_enabled"],
+        "camera_view": camera_settings["view"],
+        "mic_enabled": peripheral_settings["mic_enabled"],
+        "motor_enabled": peripheral_settings["motor_enabled"],
+        "motor_strength_log": motor_strength_log,
+        "motor_on_time_log": motor_on_time_log,
+        "motor_off_time_log": motor_off_time_log,
+        "flac_out": flac_out,
+        "h265_out": h265_out,
+        "mp4_out": mp4_out,
+    })
 
 ###################################################### Main Function ###########################################################
 # Parses CLI arguments, updates JSON settings, prints info, or starts enabled peripherals.
