@@ -54,11 +54,8 @@ def ensure_summary_sheet(path=SUMMARY_SHEET_PATH):
 
 
 # Appends one row to the Summary Sheet for the completed run.
-# data keys: timestamp, recording_time, speaker_enabled, speaker_freq, speaker_on, speaker_off,
-#             speaker_pulse_wall, speaker_pulse_elapsed, camera_enabled, camera_view, mic_enabled,
-#             motor_enabled, motor_strength_log, motor_on_time_log, motor_off_time_log,
-#             motor_pulse_wall, motor_pulse_elapsed, flac_out, h265_out, mp4_out
-def append_run(data, path=SUMMARY_SHEET_PATH):
+# run is a Main.py RunResult; this detects output files and filters pulse logs to ON-events itself.
+def append_run(run, path=SUMMARY_SHEET_PATH):
     ensure_summary_sheet(path)
     wb = openpyxl.load_workbook(path)
     ws = wb.active
@@ -66,29 +63,48 @@ def append_run(data, path=SUMMARY_SHEET_PATH):
     def log_str(values):
         return ", ".join(str(v) for v in values) if values else ""
 
+    audio_path = run.recording_paths["audio"]
+    video_path = run.recording_paths["video"]
+
+    flac_out = audio_path is not None and Path(audio_path).exists()
+    if isinstance(video_path, dict):
+        h265_out = any(Path(p).exists() for p in video_path.values())
+    else:
+        h265_out = video_path is not None and Path(video_path).exists()
+    mp4_out = len(run.mp4_paths) > 0
+
+    # Extract ON-transition timestamps; elapsed is relative to run_start_time.
+    speaker_pulse_ons = [e for e in run.speaker_pulse_log if e["event"] == "ON"]
+    speaker_pulse_wall = [e["wall"] for e in speaker_pulse_ons]
+    speaker_pulse_elapsed = [round(e["mono"] - run.run_start_time, 2) for e in speaker_pulse_ons]
+
+    motor_pulse_ons = [e for e in run.motor_pulse_log if e["event"] == "ON"]
+    motor_pulse_wall = [e["wall"] for e in motor_pulse_ons]
+    motor_pulse_elapsed = [round(e["mono"] - run.run_start_time, 2) for e in motor_pulse_ons]
+
     row = [
-        data.get("timestamp", ""),
-        data.get("recording_time", ""),
-        "ON" if data.get("speaker_enabled") else "OFF",
-        data.get("speaker_freq", ""),
-        data.get("speaker_on", ""),
-        data.get("speaker_off", ""),
-        log_str(data.get("speaker_on_log", [])),
-        log_str(data.get("speaker_off_log", [])),
-        log_str(data.get("speaker_pulse_wall", [])),
-        log_str(data.get("speaker_pulse_elapsed", [])),
-        "ON" if data.get("camera_enabled") else "OFF",
-        data.get("camera_view", ""),
-        "ON" if data.get("mic_enabled") else "OFF",
-        "ON" if data.get("motor_enabled") else "OFF",
-        log_str(data.get("motor_strength_log", [])),
-        log_str(data.get("motor_on_time_log", [])),
-        log_str(data.get("motor_off_time_log", [])),
-        log_str(data.get("motor_pulse_wall", [])),
-        log_str(data.get("motor_pulse_elapsed", [])),
-        "TRUE" if data.get("flac_out") else "FALSE",
-        "TRUE" if data.get("h265_out") else "FALSE",
-        "TRUE" if data.get("mp4_out") else "FALSE",
+        run.run_timestamp,
+        run.actual_run_time,
+        "ON" if run.peripheral_settings["speaker_enabled"] else "OFF",
+        run.speaker_freq,
+        run.speaker_on,
+        run.speaker_off,
+        log_str(run.speaker_on_log),
+        log_str(run.speaker_off_log),
+        log_str(speaker_pulse_wall),
+        log_str(speaker_pulse_elapsed),
+        "ON" if run.peripheral_settings["camera_enabled"] else "OFF",
+        run.camera_settings["view"],
+        "ON" if run.peripheral_settings["mic_enabled"] else "OFF",
+        "ON" if run.peripheral_settings["motor_enabled"] else "OFF",
+        log_str(run.motor_strength_log),
+        log_str(run.motor_on_time_log),
+        log_str(run.motor_off_time_log),
+        log_str(motor_pulse_wall),
+        log_str(motor_pulse_elapsed),
+        "TRUE" if flac_out else "FALSE",
+        "TRUE" if h265_out else "FALSE",
+        "TRUE" if mp4_out else "FALSE",
     ]
 
     ws.append(row)

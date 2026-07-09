@@ -12,14 +12,50 @@
 # STRUCTURE: Main.py --> Motor.py --> Main.cpp
 
 ############################################ Standard Library Imports ################################################
+import json
 import msvcrt
 import queue
 import time
 from datetime import datetime
+from pathlib import Path
 import serial
 from serial.tools import list_ports
 
 ################################################### Functionality ####################################################
+
+SETTINGS_PATH = Path(__file__).resolve().parent / "motor_settings.json"
+
+
+# Loads motor_settings.json and fills missing keys from defaults_fn()'s values
+def load_settings(defaults_fn):
+    defaults = defaults_fn()
+    if SETTINGS_PATH.exists():
+        with SETTINGS_PATH.open("r", encoding="utf-8") as settings_file:
+            defaults.update(json.load(settings_file))
+    return defaults
+
+
+# Writes motor_settings.json
+def save_settings(settings):
+    with SETTINGS_PATH.open("w", encoding="utf-8") as settings_file:
+        json.dump(settings, settings_file, indent=2)
+
+
+# Updates one motor setting and saves it
+def set_setting(settings, key, value):
+    settings[key] = value
+    save_settings(settings)
+    return True
+
+
+# Saves live motor settings changed during runtime
+def save_live_settings(defaults_fn, strength, on_time, off_time):
+    settings = load_settings(defaults_fn)
+    settings["strength"] = strength
+    settings["on_time"] = on_time
+    settings["off_time"] = off_time
+    save_settings(settings)
+
 
 # Motor arguments for setting user parameters
 def add_motor_arguments(parser):

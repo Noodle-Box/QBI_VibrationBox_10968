@@ -8,6 +8,8 @@
 
 ############################################ Standard Library Imports ################################################
 import json
+import shutil
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -343,6 +345,78 @@ def run_camera(width, height, fps, duration_seconds, file_format, device_ip, rec
         return saved_video_path
     
     return None
+
+# Top-level camera subprocess entry point. Must be top-level (not nested) to be picklable on Windows.
+# Puts the saved video path into result_queue from inside run_camera's finally block, before
+# DepthAI closes the device — so the result survives a native crash on device shutdown.
+def run_camera_subprocess(record_time, width, height, fps, file_format, stop_event, result_queue, ready_event=None):
+    camera_settings = load_settings()
+    try:
+        run_camera(
+            width=width,
+            height=height,
+            fps=fps,
+            duration_seconds=record_time,
+            file_format=file_format,
+            device_ip=camera_settings["device_ip"],
+            record_video=camera_settings["record_video"],
+            view=camera_settings["view"],
+            window_name="OAK-D Camera",
+            stop_event=stop_event,
+            result_queue=result_queue,
+            ready_event=ready_event,
+        )
+    except Exception as exc:
+        print(f"Camera stopped with an error: {exc}")
+        result_queue.put(None)
+        if ready_event is not None:
+            ready_event.set()
+
+
+# Merges recorded camera video with microphone audio into MP4 with ffmpeg; used after camera and mic finish.
+def merge_with_audio(video_path, audio_path, fps):
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        print("ffmpeg was not found, so audio/video merge was skipped.")
+        return None
+
+    if video_path is None or audio_path is None:
+        print("Audio/video merge skipped because the video or audio file was not created.")
+        return None
+
+    output_path = RECORDINGS_DIR / f"{Path(video_path).stem}.mp4"
+
+    command = [
+        ffmpeg,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f", "hevc",
+        "-framerate", str(fps),
+        "-i", str(video_path),
+        "-i", str(audio_path),
+        "-c:v", "copy",
+        "-tag:v", "hvc1",
+        "-c:a", "aac",
+        "-ar", "48000",
+        "-ac", "1",
+        "-shortest",
+        str(output_path),
+    ]
+
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        print(f"Audio/video merge failed: {exc}")
+        if exc.stderr:
+            print(exc.stderr)
+        return None
+
+    print(f"Saved merged audio/video MP4: {output_path}")
+    print("Note: merged MP4 audio is downsampled to 48 kHz. The standalone audio recording keeps the original microphone data.")
+    return output_path
+
 
 # Prints camera settings to terminal --> --info
 def print_camera_info(settings, width, height, fps, default_duration, file_format):
