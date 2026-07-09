@@ -61,7 +61,7 @@ def save_settings(settings):
 
 # Builds the timestamp stem for audio output files
 def get_recording_stem():
-    return datetime.now().strftime("Recording_%H%M%S_%d_%m")
+    return datetime.now().strftime("Recording_%H%M_%d_%m")
 
 
 # Checks whether a sound device entry supports input channels

@@ -57,7 +57,7 @@ def save_settings(settings):
 
 # Builds the timestamp stem for camera output files
 def get_recording_stem():
-    return datetime.now().strftime("Recording_%H%M%S_%d_%m")
+    return datetime.now().strftime("Recording_%H%M_%d_%m")
 
 
 # Enables or disables camera video recording in JSON.

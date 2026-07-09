@@ -132,16 +132,16 @@ def print_menu(strength, on_time, off_time, kill_button, motor_on=True, time_lef
         print()
 
     print("CMD | Current Setting | Description")
-    print()
+    print("-" * 77)
     print(f"{'p':<3} | {('on' if motor_on else 'off'):<15} | Toggle ON/OFF vibrations without quitting run time")
     print(f"{'s':<3} | {strength:<15} | Vibration strength - strength of motor")
-    print(f"{'n':<3} | {f'{on_time} s':<15} | Motor on time")
-    print(f"{'m':<3} | {f'{off_time} s':<15} | Motor off time")
+    print(f"{'n':<3} | {on_time:<15} | Motor on time (s)")
+    print(f"{'m':<3} | {off_time:<15} | Motor off time (s)")
     if speaker_enabled:
         on_str  = f"{speaker_on} s"  if speaker_on  is not None else "-"
         off_str = f"{speaker_off} s" if speaker_off is not None else "-"
-        print(f"{'t':<3} | {on_str:<15} | Speaker on-time in seconds")
-        print(f"{'y':<3} | {off_str:<15} | Speaker off-time in seconds")
+        print(f"{'t':<3} | {on_str:<15} | Speaker on-time (s)")
+        print(f"{'y':<3} | {off_str:<15} | Speaker off-time (s)")
     print(f"{kill_button:<3} | {'-':<15} | Kill all peripherals and process clipped recordings")
 
 
@@ -284,7 +284,7 @@ def drain_serial_pulses(arduino, pulse_callback):
             break
         if line.startswith("P:") and pulse_callback is not None:
             event = line[2:]
-            pulse_callback(event, datetime.now().strftime("%H:%M:%S.%f")[:-3], time.monotonic())
+            pulse_callback(event, datetime.now().strftime("%H:%M:%S"), time.monotonic())
 
 
 # Runs the motor for a fixed duration, draining motor_queue for live parameter updates.

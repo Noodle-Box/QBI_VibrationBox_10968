@@ -57,7 +57,7 @@ def run_speaker(duration_seconds, stop_event, frequency_hz, beep_duration_second
             # Fire pulse callback and play the beep
             beep_started_at = time.monotonic()
             if pulse_callback is not None:
-                pulse_callback("ON", datetime.now().strftime("%H:%M:%S.%f")[:-3], beep_started_at)
+                pulse_callback("ON", datetime.now().strftime("%H:%M:%S"), beep_started_at)
             play_tone(tone, sample_rate, stop_event)
             beep_ended_at = time.monotonic()
 

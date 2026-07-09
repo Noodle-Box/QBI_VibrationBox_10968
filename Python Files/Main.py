@@ -347,7 +347,7 @@ def run_enabled_peripherals(peripheral_settings):
             return
 
     # Snapshot run metadata at the very start before any threads launch.
-    run_timestamp = datetime.now().strftime("%H%M%S_%d_%m")
+    run_timestamp = datetime.now().strftime("%H%M_%d_%m")
     camera_settings = Camera.load_settings()
     motor_settings = load_motor_settings()
 
