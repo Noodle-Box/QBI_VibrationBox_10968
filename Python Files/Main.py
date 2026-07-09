@@ -566,7 +566,7 @@ def run_enabled_peripherals(peripheral_settings):
         SummarySheet.append_run(RunResult(
             run_timestamp=run_timestamp, actual_run_time=actual_run_time, run_start_time=run_start_time,
             peripheral_settings=peripheral_settings, camera_settings=camera_settings,
-            speaker_freq=SPEAKER_FREQ, speaker_on=SPEAKER_ON, speaker_off=SPEAKER_OFF,
+            speaker_freq=SPEAKER_FREQ,
             speaker_pulse_log=speaker_pulse_log, speaker_on_log=speaker_on_log, speaker_off_log=speaker_off_log,
             motor_strength_log=motor_strength_log, motor_on_time_log=motor_on_time_log, motor_off_time_log=motor_off_time_log,
             motor_pulse_log=pulse_log, recording_paths=recording_paths, mp4_paths=mp4_paths,
@@ -590,7 +590,7 @@ def run_enabled_peripherals(peripheral_settings):
     SummarySheet.append_run(RunResult(
         run_timestamp=run_timestamp, actual_run_time=actual_run_time, run_start_time=run_start_time,
         peripheral_settings=peripheral_settings, camera_settings=camera_settings,
-        speaker_freq=SPEAKER_FREQ, speaker_on=SPEAKER_ON, speaker_off=SPEAKER_OFF,
+        speaker_freq=SPEAKER_FREQ,
         speaker_pulse_log=speaker_pulse_log, speaker_on_log=speaker_on_log, speaker_off_log=speaker_off_log,
         motor_strength_log=motor_strength_log, motor_on_time_log=motor_on_time_log, motor_off_time_log=motor_off_time_log,
         motor_pulse_log=pulse_log, recording_paths=recording_paths, mp4_paths=[],
@@ -606,8 +606,6 @@ class RunResult:
     peripheral_settings: dict
     camera_settings: dict
     speaker_freq: int
-    speaker_on: float
-    speaker_off: float
     speaker_pulse_log: list
     speaker_on_log: list
     speaker_off_log: list
