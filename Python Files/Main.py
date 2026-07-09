@@ -40,7 +40,7 @@ KILL_BUTTON = "k"               # Press this key to stop all peripherals during 
 # Speaker Macros
 SPEAKER_FREQ = 250              # (Hz), Beep Freq
 SPEAKER_ON = 1.0                # (s), Speaker ON time
-SPEAKER_OFF = 5.0               # (s), Speaker OFF time
+SPEAKER_OFF = 10.0               # (s), Speaker OFF time
 SPEAKER_SAMPLE_RATE = 44100     # (Hz), Sample rate for audio generation
 SPEAKER_AMPLITUDE = 1           # Amplitude of the sinusodial beep sound. Adjust knob on speaker for real-world volume 
 
@@ -62,8 +62,8 @@ MIC_FORMAT = "FLAC"             # File format for the recorded audio. Common opt
 MOTOR_SERIAL_PORT = "COM6"      # Serial port for motor driver. Change in "DEVICE MANAGER"
 MOTOR_BAUD_RATE = 9600          # Baud rate for motor driver communication. DO NOT TOUCH
 MOTOR_STRENGTH = 200            # Raw PWM strength, 50-250.
-MOTOR_ON_TIME = 1                # (s), Motor ON time
-MOTOR_OFF_TIME = 3599            # (s), Motor OFF time
+MOTOR_ON_TIME = 1.5                # (s), Motor ON time
+MOTOR_OFF_TIME = 10            # (s), Motor OFF time
 
 ############################################# Helper Functions ####################################################
 Camera.RECORDINGS_DIR = RECORDINGS_DIR
