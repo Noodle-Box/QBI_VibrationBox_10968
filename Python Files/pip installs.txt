@@ -5,10 +5,11 @@
 3. numpy
 4. depthai
 5. opencv-python
+6. openpyxl
 
 Install all required Python packages with:
 
-python -m pip install pyserial sounddevice numpy depthai opencv-python
+python -m pip install pyserial sounddevice numpy depthai opencv-python openpyxl
 
 Required non-pip dependency for FLAC audio export, H.265 video export, MP3 export, and audio/video merge:
 
