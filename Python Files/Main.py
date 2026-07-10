@@ -28,19 +28,20 @@ import SummarySheet
 ####################################### Peripheral Settings: CHANGE THESE AS NEEDED #########################################
 
 # Recording paths (Change for where you want to autosave the recordings)
-CUSTOM_RECORDINGS_DIR = r"C:\Users\uqtverga\Documents\Local Python Dev environment\QBI---Vibration-Box-10968-\Python Files\recordings"    # Example: r"C:\Users\YourName\Documents\VibrationBoxRecordings". Use None for repo-local recordings.
+#r"C:\Users\uqtverga\Documents\Local Python Dev environment\QBI---Vibration-Box-10968-\Python Files\recordings"
+CUSTOM_RECORDINGS_DIR = None    # Example: r"C:\Users\YourName\Documents\VibrationBoxRecordings". Use None for repo-local recordings.
 RECORDINGS_DIR = Path(CUSTOM_RECORDINGS_DIR) if CUSTOM_RECORDINGS_DIR else Path(__file__).resolve().parent / "recordings"
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Recording Macros
-DEFAULT_RECORD_TIME = 180.0     # (s), Recording duration
+DEFAULT_RECORD_TIME = 240.0     # (s), Recording duration
 DEFAULT_MERGE_AV = True         # True exports a merged MP4 when mic and camera are enabled.
 KILL_BUTTON = "k"               # Press this key to stop all peripherals during recording.
 
 # Speaker Macros
 SPEAKER_FREQ = 250              # (Hz), Beep Freq
 SPEAKER_ON = 1.0                # (s), Speaker ON time
-SPEAKER_OFF = 60.0              # (s), Speaker OFF time
+SPEAKER_OFF = 10.0              # (s), Speaker OFF time
 SPEAKER_SAMPLE_RATE = 44100     # (Hz), Sample rate for audio generation
 SPEAKER_AMPLITUDE = 1           # Amplitude of the sinusodial beep sound. Adjust knob on speaker for real-world volume 
 
@@ -61,9 +62,9 @@ MIC_FORMAT = "FLAC"             # File format for the recorded audio. Common opt
 # Motor Macros
 MOTOR_SERIAL_PORT = "COM6"      # Serial port for motor driver. Change in "DEVICE MANAGER"
 MOTOR_BAUD_RATE = 9600          # Baud rate for motor driver communication. DO NOT TOUCH
-MOTOR_STRENGTH = 200            # Raw PWM strength, 50-250.
+MOTOR_STRENGTH = 150            # Raw PWM strength, 50-250.
 MOTOR_ON_TIME = 1.5             # (s), Motor ON time
-MOTOR_OFF_TIME = 60             # (s), Motor OFF time
+MOTOR_OFF_TIME = 10             # (s), Motor OFF time
 
 ############################################# Helper Functions ####################################################
 Camera.RECORDINGS_DIR = RECORDINGS_DIR
